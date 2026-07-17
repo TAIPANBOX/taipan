@@ -21,14 +21,14 @@ By default, `taipan up` brings up the money plane only:
 
 | Service | Port | Notes |
 |---|---|---|
-| TokenFuse gateway | 4100 | budget enforcement proxy; loopback only, no auth |
+| TokenFuse gateway | 4100 | budget enforcement proxy; loopback only, no caller-facing auth |
 | TokenFuse Cloud | 8080 | control API; dev bearer keys minted per environment |
 
 `--with wardryx,idryx` adds:
 
 | Service | Port | Notes |
 |---|---|---|
-| Wardryx | 8090 | policy decision point; started with zero policies (allow-all) |
+| Wardryx | 8090 | policy decision point; seeded with a demo policy scoped to `agent://mockryx.local/*` (a small `require_human_above_usd` and a `deny_tool: [shell_exec]`) and a minted `WARDRYX_APPROVAL_SECRET`; the gateway is wired to consult it (`TOKENFUSE_WARDRYX_MODE=enforce`) |
 | Idryx | 8081 | identity graph; its own default (:8080) collides with Cloud, hence the remap |
 
 Every service binds to `127.0.0.1` only.
@@ -82,6 +82,7 @@ taipan down --name demo
     <name>.json                  descriptor — what other tools auto-discover
     <name>.pid.json               tracked PIDs, used and cleaned up by `taipan down`
     <name>.keys.json              dev bearer keys, mode 0600 — see "Keys" below
+    <name>.wardryx-policy.yaml    demo Wardryx policy (only if --with wardryx)
     <name>.logs/<service>.log     stdout+stderr of each spawned process
     <name>.traces/gateway/        gateway's own Parquet trace dir
 ```

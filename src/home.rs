@@ -10,6 +10,7 @@
 //!     <name>.json                 descriptor (the file consumers auto-discover)
 //!     <name>.pid.json             tracked PIDs for `taipan down`
 //!     <name>.keys.json            dev bearer keys (0600) — referenced, not embedded, by the descriptor
+//!     <name>.wardryx-policy.yaml  demo Wardryx policy (only if --with wardryx)
 //!     <name>.logs/<service>.log   stdout+stderr of each spawned process
 //!     <name>.traces/<service>/    optional Parquet trace dirs (gateway only, today)
 //! ```
@@ -66,6 +67,14 @@ impl TaipanHome {
 
     pub fn keyfile_path(&self, name: &str) -> PathBuf {
         self.environments_dir().join(format!("{name}.keys.json"))
+    }
+
+    /// The demo Wardryx policy file `taipan up --with wardryx` seeds at `up`
+    /// time (see `services::wardryx::write_demo_policy`), named alongside the
+    /// other per-environment files this module already owns.
+    pub fn wardryx_policy_path(&self, name: &str) -> PathBuf {
+        self.environments_dir()
+            .join(format!("{name}.wardryx-policy.yaml"))
     }
 
     /// Create the directories every environment needs, regardless of which

@@ -3,6 +3,21 @@
 //! opt-in via `--with` and degrade gracefully), wait for each one's
 //! `/healthz`, then persist the pidfile, keyfile, and descriptor.
 //!
+//! Wardryx is a special case in that ordering: the gateway (part of the
+//! mandatory pair, started first) needs Wardryx's URL and a bearer key up
+//! front so it can be wired to consult Wardryx as its policy decision point
+//! from the moment it comes up, but Wardryx itself is an opt-in `--with`
+//! service that only starts afterward. `prepare_wardryx_wiring` resolves
+//! that: it mints Wardryx's keys, its approval secret, and its demo policy
+//! file before either process starts, and both the gateway and `start_wardryx`
+//! are handed the exact same values, so they can never disagree about
+//! Wardryx's address or which key is valid. If Wardryx then fails to come up,
+//! the gateway keeps its config regardless: `TOKENFUSE_WARDRYX_FAILMODE`
+//! defaults to `open` (an unreachable PDP resolves to allow), so an absent
+//! Wardryx degrades to "the gateway behaves as if Wardryx were off," the same
+//! graceful degradation every other `--with` service already gets, never a
+//! stuck or half-enforcing gateway.
+//!
 //! Fail-closed rules this module enforces:
 //! - A failure building/starting/health-checking the mandatory gateway or
 //!   cloud aborts the whole command and stops anything already started —
@@ -10,7 +25,10 @@
 //! - A failure in an opt-in `--with` service does NOT tear down an
 //!   already-healthy mandatory pair; it is recorded in the descriptor's
 //!   `unavailable` map and logged, so the environment still comes up usable
-//!   and nothing is silently faked as green.
+//!   and nothing is silently faked as green. This now also covers a failure
+//!   preparing Wardryx's keys/secret/policy file (`prepare_wardryx_wiring`):
+//!   that failure degrades `--with wardryx` exactly like a build or healthz
+//!   failure would, rather than aborting the whole command.
 //! - A failure persisting the pidfile/keyfile/descriptor itself rolls back
 //!   every process started this run: an environment taipan cannot account
 //!   for is not left running.
@@ -23,14 +41,49 @@ use anyhow::{Context, Result};
 use crate::cli::{Extra, UpArgs};
 use crate::descriptor::{Descriptor, EventsSection, KeysSection};
 use crate::home::TaipanHome;
-use crate::keys::{self, KeyFile};
+use crate::keys::{self, DevKey, KeyFile};
 use crate::pidfile::{PidFile, ProcEntry};
 use crate::procutil::{self, Spawned};
 use crate::services;
-use crate::util::{hostname, now_rfc3339, touch_file, validate_name};
+use crate::util::{hostname, now_rfc3339, random_hex, touch_file, validate_name};
 use crate::workspace::Workspace;
 
 const GATEWAY_MODES: [&str; 3] = ["shadow", "warn", "enforce"];
+
+/// Wardryx's identity, resolved before either the gateway or Wardryx itself
+/// actually starts. See the module doc comment for why this exists and how a
+/// later Wardryx start failure is still handled gracefully.
+struct WardryxWiring {
+    url: String,
+    admin: DevKey,
+    viewer: DevKey,
+    approval_secret: String,
+    policy_path: std::path::PathBuf,
+}
+
+/// Mint Wardryx's dev keys and approval secret, and write its demo policy
+/// file, all before any process starts. Kept infallible-looking but actually
+/// fallible on purpose (`/dev/urandom`, directory creation, and the policy
+/// write can all fail): the caller treats an `Err` here exactly like any
+/// other `--with wardryx` failure, recording it in `unavailable` rather than
+/// aborting the whole `up`.
+fn prepare_wardryx_wiring(org: &str, home: &TaipanHome, name: &str) -> Result<WardryxWiring> {
+    let admin = keys::generate(org, "admin")?;
+    let viewer = keys::generate(org, "viewer")?;
+    // HMAC key wardryx signs/verifies approval_token with (WARDRYX_APPROVAL_SECRET).
+    // 32 random bytes is ample entropy for a local/dev secret, matching the
+    // 20-byte dev bearer keys `keys::generate` already mints.
+    let approval_secret = random_hex(32)?;
+    let policy_path = home.wardryx_policy_path(name);
+    services::wardryx::write_demo_policy(&policy_path)?;
+    Ok(WardryxWiring {
+        url: format!("http://127.0.0.1:{}", services::wardryx::PORT),
+        admin,
+        viewer,
+        approval_secret,
+        policy_path,
+    })
+}
 
 pub fn run(args: UpArgs) -> Result<()> {
     validate_name(&args.name)?;
@@ -105,6 +158,25 @@ pub fn run(args: UpArgs) -> Result<()> {
     let mut services_section = BTreeMap::new();
     let mut unavailable: BTreeMap<String, String> = BTreeMap::new();
 
+    // Resolve Wardryx's keys/secret/policy before anything starts, so the
+    // gateway (started below, ahead of Wardryx itself) can be wired to
+    // consult it from the moment it comes up. See the module doc comment for
+    // the full ordering rationale and the degrade-gracefully guarantee if
+    // this fails or Wardryx never actually comes up.
+    let wardryx_wiring = if args.with.contains(&Extra::Wardryx) {
+        match prepare_wardryx_wiring(&org, &home, &args.name) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                let reason = format!("{e:#}");
+                tracing::warn!(service = "wardryx", reason = %reason, "could not prepare keys/secret/policy; continuing without it");
+                unavailable.insert("wardryx".to_string(), reason);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // --- mandatory: tokenfuse gateway + cloud -----------------------------
 
     let (gateway_bin, cloud_bin) = services::tokenfuse_build::ensure_binaries(&workspace, &home)
@@ -117,6 +189,9 @@ pub fn run(args: UpArgs) -> Result<()> {
         &args.gateway_mode,
         &tokenfuse_events,
         &gateway_data_dir,
+        wardryx_wiring
+            .as_ref()
+            .map(|w| (w.url.as_str(), w.viewer.token.as_str())),
         &gateway_log,
         healthz_timeout,
     ) {
@@ -147,21 +222,21 @@ pub fn run(args: UpArgs) -> Result<()> {
     // the failure is logged and recorded in the descriptor, `up` still
     // succeeds overall.
 
-    if args.with.contains(&Extra::Wardryx) {
+    if let Some(wiring) = &wardryx_wiring {
         match start_wardryx(
             &workspace,
             &home,
-            &org,
+            wiring,
             &events_dir,
             &logs_dir,
             healthz_timeout,
         ) {
-            Ok((svc, admin_secret, viewer_secret)) => {
+            Ok(svc) => {
                 started.push(svc.spawned);
                 services_section.insert("wardryx".to_string(), svc.entry);
                 event_files.insert("wardryx".to_string(), "wardryx.ndjson".to_string());
-                secrets.insert("wardryx_admin".to_string(), admin_secret);
-                secrets.insert("wardryx_viewer".to_string(), viewer_secret);
+                secrets.insert("wardryx_admin".to_string(), wiring.admin.token.clone());
+                secrets.insert("wardryx_viewer".to_string(), wiring.viewer.token.clone());
                 keys_section.wardryx_admin_ref = Some(keys::key_ref(&args.name, "wardryx_admin"));
                 keys_section.wardryx_viewer_ref = Some(keys::key_ref(&args.name, "wardryx_viewer"));
             }
@@ -267,22 +342,27 @@ fn refuse_if_already_up(pidfile_path: &std::path::Path, name: &str) -> Result<()
 fn start_wardryx(
     workspace: &Workspace,
     home: &TaipanHome,
-    org: &str,
+    wiring: &WardryxWiring,
     events_dir: &std::path::Path,
     logs_dir: &std::path::Path,
     healthz_timeout: Duration,
-) -> Result<(services::StartedService, String, String)> {
+) -> Result<services::StartedService> {
     let bin = services::wardryx::ensure_binary(workspace, home)?;
     let events_path = events_dir.join("wardryx.ndjson");
     touch_file(&events_path)?;
-    let admin = keys::generate(org, "admin")?;
-    let viewer = keys::generate(org, "viewer")?;
     // Full spec for wardryx's key env; bare token for the keyfile secret
     // (wardryx's Go auth also indexes by the bare token, keys[parts[0]]).
-    let spec = format!("{},{}", admin.config_spec, viewer.config_spec);
+    let spec = format!("{},{}", wiring.admin.config_spec, wiring.viewer.config_spec);
     let log_path = logs_dir.join("wardryx.log");
-    let svc = services::wardryx::start(&bin, &events_path, &spec, &log_path, healthz_timeout)?;
-    Ok((svc, admin.token, viewer.token))
+    services::wardryx::start(
+        &bin,
+        &events_path,
+        &spec,
+        &wiring.policy_path,
+        &wiring.approval_secret,
+        &log_path,
+        healthz_timeout,
+    )
 }
 
 fn start_idryx(
