@@ -1,0 +1,36 @@
+[package]
+name = "taipan"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "Apache-2.0"
+description = "Native, no-Docker process supervisor for the TAIPANBOX agent-governance stack: one command stands up the money plane and writes a descriptor consumers can auto-discover."
+repository = "https://github.com/TAIPANBOX/taipan"
+readme = "README.md"
+authors = ["TAIPANBOX"]
+publish = false
+
+[[bin]]
+name = "taipan"
+path = "src/main.rs"
+
+[dependencies]
+# CLI parsing.
+clap = { version = "4", features = ["derive"] }
+# Descriptor / pidfile / keyfile serialization.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Error handling: every non-test fallible path returns Result, no unwrap/panic.
+anyhow = "1"
+# Structured logging, matching the rest of the TAIPANBOX stack.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Direct libc::kill for process-group signaling (stop by group, never a PID
+# discovered by scanning `ps`/`lsof`) and libc::gethostname for the
+# descriptor's `host` field.
+libc = "0.2"
+# RFC 3339 timestamps for created_at / pidfile / demo events.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[profile.release]
+opt-level = 2
