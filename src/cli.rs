@@ -52,6 +52,11 @@ pub struct UpArgs {
     /// How long to wait for each service's /healthz before giving up.
     #[arg(long, default_value_t = 30)]
     pub healthz_timeout_secs: u64,
+
+    /// Dev mode: run Cloud with the devkey fallback instead of minted keys
+    /// (unblocks console auto-pairing, not for production).
+    #[arg(long)]
+    pub devkey: bool,
 }
 
 #[derive(clap::Args)]

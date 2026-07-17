@@ -57,6 +57,11 @@ taipan up --name demo --with wardryx,idryx
 # Point at sibling checkouts that live somewhere other than . or ..
 taipan up --name demo --workspace ~/Development
 
+# Dev mode: Cloud runs on the devkey fallback instead of minted keys, so an
+# auto-discovering console can pair without hitting the minted-key pairing
+# skew (see "Keys" below). Not for production.
+taipan up --name demo --devkey
+
 # Seed a small synthetic event stream (useful before any real traffic flows).
 taipan demo --name demo
 
@@ -132,6 +137,24 @@ Keychain-backed connector replaces the local keyfile without changing the
 descriptor shape. Cloud is additionally started with
 `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1` as a documented, dev-only fallback
 credential alongside the minted keys.
+
+### `--devkey`
+
+With minted keys present, `tokenfuse-cloud`'s own key parser never activates
+its `devkey` fallback (it only fires when the parsed key map is empty), so
+pairing a device against a minted admin key over `/v1/pair/new` currently
+401s even though reads with that same key work fine. `taipan up --devkey`
+works around this: Cloud is started with an empty `TOKENFUSE_CLOUD_KEYS`
+instead of minted keys (still with `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1`), which
+switches on the literal `devkey` bearer fallback, and `<name>.keys.json`
+carries the literal string `"devkey"` under both the `cloud_admin` and
+`cloud_viewer` labels. An auto-discovering console then reads and pairs with
+a bearer Cloud genuinely accepts. The descriptor's `keys.cloud_admin_ref` /
+`keys.cloud_viewer_ref` shape is unchanged; only the secret those refs
+resolve to is different. This is a dev convenience for unblocking
+console auto-pairing locally, never a production mode: without `--devkey`,
+`up` behaves exactly as before (minted keys, devkey fallback unused because
+the key map is never empty).
 
 ## Stopping cleanly
 

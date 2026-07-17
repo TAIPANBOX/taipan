@@ -18,8 +18,14 @@ const HEALTH_PATH: &str = "/healthz";
 /// `keys_spec` is a ready-made `TOKENFUSE_CLOUD_KEYS` value
 /// (`"key:org:role,key:org:role"`, see `crate::keys`). `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1`
 /// is set alongside it as the documented dev-only fallback (task spec: "cloud
-/// 8080 (ALLOW_DEVKEY on for dev)") — belt and suspenders, not a substitute
+/// 8080 (ALLOW_DEVKEY on for dev)") - belt and suspenders, not a substitute
 /// for the minted keys, which are what the descriptor actually references.
+///
+/// `keys_spec` may deliberately be empty: `commands::up`'s `--devkey` mode
+/// passes `""` here on purpose, which (combined with `ALLOW_DEVKEY=1` above)
+/// makes `tokenfuse-cloud`'s own `parse_keys` activate the literal `devkey`
+/// bearer fallback instead of any minted key - see `commands::up::run` for
+/// why.
 pub fn start(
     bin: &Path,
     keys_spec: &str,
