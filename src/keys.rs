@@ -17,17 +17,27 @@ use serde::{Deserialize, Serialize};
 use crate::util::{now_rfc3339, random_hex};
 
 pub struct DevKey {
-    pub bearer_spec: String,
+    /// The bare bearer token a client sends (`tp_<hex>`), and the value that
+    /// belongs in the keyfile secret. The server (tokenfuse `parse_keys`,
+    /// wardryx `auth`) indexes its key map by the bare token before the first
+    /// colon and does an exact lookup on the raw bearer, so a `token:org:role`
+    /// bearer never matches a key stored as `token`. Writing the full spec as
+    /// the keyfile secret is what broke console auto-discovery auth (both reads
+    /// and pairing 401'd, verified live); the secret must be the bare token.
+    pub token: String,
+    /// The full `token:org:role` entry for the server's `TOKENFUSE_CLOUD_KEYS`
+    /// / wardryx keys env. The server parses this into `token -> Principal{org,
+    /// role}`; a client never sends this form.
+    pub config_spec: String,
 }
 
-/// Mint one `<random-hex>:<org>:<role>` dev key. 20 random bytes (40 hex
-/// chars) is ample entropy for a local/dev bearer token; this is explicitly
-/// not a production credential (see module docs).
+/// Mint one dev key: a bare `tp_<hex>` token plus its `token:org:role` config
+/// spec. 20 random bytes (40 hex chars) is ample entropy for a local/dev
+/// bearer; this is explicitly not a production credential (see module docs).
 pub fn generate(org: &str, role: &str) -> Result<DevKey> {
     let token = format!("tp_{}", random_hex(20)?);
-    Ok(DevKey {
-        bearer_spec: format!("{token}:{org}:{role}"),
-    })
+    let config_spec = format!("{token}:{org}:{role}");
+    Ok(DevKey { token, config_spec })
 }
 
 /// The descriptor-facing reference label for a given environment + secret
@@ -71,5 +81,30 @@ impl KeyFile {
         std::fs::set_permissions(path, perms)
             .with_context(|| format!("chmod 600 {}", path.display()))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression for the auto-discovery auth bug: the keyfile secret (what a
+    /// client sends as its bearer) must be the BARE token, because the server
+    /// indexes its key map by the bare token before the first colon. A secret
+    /// carrying the `:org:role` suffix 401s for both reads and pairing.
+    #[test]
+    fn keyfile_secret_is_the_bare_token_and_config_spec_is_full() {
+        let k = generate("acme", "admin").expect("generate");
+        assert!(k.token.starts_with("tp_"), "token must be a tp_ bearer");
+        assert!(
+            !k.token.contains(':'),
+            "keyfile secret must be the bare token (no :org:role), got {:?}",
+            k.token
+        );
+        assert_eq!(
+            k.config_spec,
+            format!("{}:acme:admin", k.token),
+            "server config spec keeps token:org:role"
+        );
     }
 }

@@ -83,8 +83,11 @@ pub fn run(args: UpArgs) -> Result<()> {
     } else {
         let cloud_admin = keys::generate(&org, "admin")?;
         let cloud_viewer = keys::generate(&org, "viewer")?;
-        let spec = format!("{},{}", cloud_admin.bearer_spec, cloud_viewer.bearer_spec);
-        (spec, cloud_admin.bearer_spec, cloud_viewer.bearer_spec)
+        // Server config gets the full token:org:role spec; the keyfile secret
+        // gets the bare token, which is what a client sends as its bearer (the
+        // server indexes by the bare token, so a full-spec secret 401s).
+        let spec = format!("{},{}", cloud_admin.config_spec, cloud_viewer.config_spec);
+        (spec, cloud_admin.token, cloud_viewer.token)
     };
 
     let mut secrets: BTreeMap<String, String> = BTreeMap::new();
@@ -274,10 +277,12 @@ fn start_wardryx(
     touch_file(&events_path)?;
     let admin = keys::generate(org, "admin")?;
     let viewer = keys::generate(org, "viewer")?;
-    let spec = format!("{},{}", admin.bearer_spec, viewer.bearer_spec);
+    // Full spec for wardryx's key env; bare token for the keyfile secret
+    // (wardryx's Go auth also indexes by the bare token, keys[parts[0]]).
+    let spec = format!("{},{}", admin.config_spec, viewer.config_spec);
     let log_path = logs_dir.join("wardryx.log");
     let svc = services::wardryx::start(&bin, &events_path, &spec, &log_path, healthz_timeout)?;
-    Ok((svc, admin.bearer_spec, viewer.bearer_spec))
+    Ok((svc, admin.token, viewer.token))
 }
 
 fn start_idryx(
