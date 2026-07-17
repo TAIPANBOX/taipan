@@ -12,8 +12,12 @@ It generalizes the pattern proven in
 [`bank-in-a-box/run.sh`](https://github.com/TAIPANBOX/bank-in-a-box) into a
 reusable CLI.
 
-This repo is Apache-2.0 (see [LICENSE](LICENSE)) — it is the adoption channel
-for the stack, not the proprietary Genaryx console.
+This is the private Genaryx orchestrator: the descriptor, auto-discovery,
+enforcement presets and `--with` wiring that make the Genaryx console light up
+over a real stack. The free, minimal "run the open stack locally" launcher for
+adopters lives in the public [stack-up](https://github.com/TAIPANBOX/stack-up)
+repo instead. The source here stays Apache-2.0 (see [LICENSE](LICENSE)); the
+repo is private as part of the Genaryx product boundary.
 
 ## What it starts
 
