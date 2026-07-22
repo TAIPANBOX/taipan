@@ -1,7 +1,8 @@
 //! TokenFuse Cloud (money-plane control API): summary/runs/agents/savings,
-//! incidents, ES256 device-pairing mutations. Bound to `0.0.0.0` by the
-//! binary itself (`crates/cloud/src/main.rs`), so it is reachable at
-//! 127.0.0.1 like every other loopback-only service here.
+//! incidents, ES256 device-pairing mutations. Bound to `127.0.0.1` (loopback)
+//! like every other service here: the binary now defaults to loopback, and we
+//! set `TOKENFUSE_CLOUD_HOST` explicitly below for clarity. Remote access is via
+//! the tunnel / on-box web shell, never a raw open port a scanner could reach.
 
 use std::path::Path;
 use std::time::Duration;
@@ -34,6 +35,11 @@ pub fn start(
 ) -> Result<StartedService> {
     let envs = vec![
         ("PORT".to_string(), PORT.to_string()),
+        // Bind loopback only: this deploy and the on-box web shell reach the
+        // money API at 127.0.0.1, and remote access goes through the tunnel,
+        // never a raw open port. The binary already defaults to loopback; this
+        // is explicit belt-and-suspenders.
+        ("TOKENFUSE_CLOUD_HOST".to_string(), "127.0.0.1".to_string()),
         ("TOKENFUSE_CLOUD_KEYS".to_string(), keys_spec.to_string()),
         ("TOKENFUSE_CLOUD_ALLOW_DEVKEY".to_string(), "1".to_string()),
     ];
