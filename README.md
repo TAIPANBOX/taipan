@@ -41,7 +41,7 @@ Every service binds to `127.0.0.1` only.
 
 - Rust (stable) and Go, on `PATH`.
 - Sibling checkouts of `tokenfuse` (always) and, if you pass `--with`,
-  `wardryx` and/or `Idryx` — either next to your `taipan` checkout, or next to
+  `wardryx` and/or `Idryx`, either next to your `taipan` checkout, or next to
   its parent directory. `taipan` tries both locations before giving up; pass
   `--workspace <dir>` to point at a different parent directory entirely.
   taipan never modifies these repos; it only reads their source (to decide
@@ -83,9 +83,9 @@ taipan down --name demo
     wardryx.ndjson               (only if --with wardryx)
     demo.ndjson                  (only after `taipan demo`)
   environments/
-    <name>.json                  descriptor — what other tools auto-discover
+    <name>.json                  descriptor: what other tools auto-discover
     <name>.pid.json               tracked PIDs, used and cleaned up by `taipan down`
-    <name>.keys.json              dev bearer keys, mode 0600 — see "Keys" below
+    <name>.keys.json              dev bearer keys, mode 0600, see "Keys" below
     <name>.wardryx-policy.yaml    demo Wardryx policy (only if --with wardryx)
     <name>.logs/<service>.log     stdout+stderr of each spawned process
     <name>.traces/gateway/        gateway's own Parquet trace dir
@@ -124,7 +124,7 @@ consumers (the Genaryx console's auto-discovery) expect:
 
 `wardryx`/`idryx` entries and their key refs are present only when started via
 `--with`. `unavailable` lists any `--with` service that failed to build or
-start, keyed by service name, with a plain-text reason — `taipan up` degrades
+start, keyed by service name, with a plain-text reason. `taipan up` degrades
 gracefully rather than failing the whole environment over an optional piece,
 and never omits a failure silently. `unavailable` and `logs_dir` are additive
 beyond the documented shape; unknown fields are meant to be tolerated, the
@@ -136,7 +136,7 @@ Bearer keys (`key:org:role`, matching `tokenfuse-cloud`'s and Wardryx's own
 key format) are minted fresh per environment and written to
 `<name>.keys.json` (mode 0600), never into the descriptor. The descriptor
 only carries a reference label (`taipan/<name>/<key-name>`) pointing at that
-file's own key names — the same "value in a secret store, reference in the
+file's own key names: the same "value in a secret store, reference in the
 discovered file" split the console's design calls for; a future
 Keychain-backed connector replaces the local keyfile without changing the
 descriptor shape. Cloud is additionally started with
@@ -165,7 +165,7 @@ the key map is never empty).
 
 Every process `taipan up` starts is placed in its own process group at spawn
 time (`setpgid(0, 0)`), and its PID is recorded in `<name>.pid.json`.
-`taipan down` signals only PIDs it finds in that file, by process group —
+`taipan down` signals only PIDs it finds in that file, by process group,
 never a PID discovered by scanning `ps`/`lsof`/`grep`. The gateway is
 stopped with `SIGINT` specifically (its shutdown future is
 `tokio::signal::ctrl_c()`, and that graceful path is what flushes its
