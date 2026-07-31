@@ -64,7 +64,7 @@ impl KeyFile {
         }
     }
 
-    /// Write as pretty JSON, mode 0600 — best-effort permission tightening
+    /// Write as pretty JSON, mode 0600, best-effort permission tightening
     /// (a failure to chmod is logged by the caller, not fatal: the file is
     /// still written, and worst case is a too-loose local dev secret, not a
     /// half-written environment).

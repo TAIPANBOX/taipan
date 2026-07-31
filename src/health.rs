@@ -40,7 +40,7 @@ fn probe_once(port: u16, path: &str, timeout: Duration) -> bool {
 }
 
 /// Poll `GET http://127.0.0.1:<port><path>` until it answers 2xx, the tracked
-/// process dies, or `overall_timeout` elapses — whichever comes first. On
+/// process dies, or `overall_timeout` elapses, whichever comes first. On
 /// failure, the error includes the tail of the process's own log so the
 /// operator does not have to go hunting for it.
 pub fn wait_healthy(

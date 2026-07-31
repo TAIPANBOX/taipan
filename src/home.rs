@@ -9,7 +9,7 @@
 //!   environments/
 //!     <name>.json                 descriptor (the file consumers auto-discover)
 //!     <name>.pid.json             tracked PIDs for `taipan down`
-//!     <name>.keys.json            dev bearer keys (0600) — referenced, not embedded, by the descriptor
+//!     <name>.keys.json            dev bearer keys (0600), referenced, not embedded, by the descriptor
 //!     <name>.wardryx-policy.yaml  demo Wardryx policy (only if --with wardryx)
 //!     <name>.logs/<service>.log   stdout+stderr of each spawned process
 //!     <name>.traces/<service>/    optional Parquet trace dirs (gateway only, today)

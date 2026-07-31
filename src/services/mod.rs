@@ -2,7 +2,7 @@
 //! health-check. Each `start_*` function is self-contained: on any failure
 //! (build, spawn, or a healthz timeout) it cleans up whatever it itself
 //! started before returning `Err`, so a caller never has to reason about a
-//! half-started single service — only about rolling back *earlier*,
+//! half-started single service, only about rolling back *earlier*,
 //! already-healthy ones (see `commands::up`).
 
 pub mod cloud;

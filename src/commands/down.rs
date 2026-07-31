@@ -1,10 +1,10 @@
 //! `taipan down`: stop every process this environment's `up` started, by
 //! process group, using only the PIDs recorded in its own pidfile. Never
-//! discovers a PID via `ps`/`lsof`/`grep`. Idempotent — running it against an
+//! discovers a PID via `ps`/`lsof`/`grep`. Idempotent, running it against an
 //! environment that is not up (or already down) is a no-op, not an error.
 //!
 //! Fail-closed: a process that survives SIGKILL is left in the pidfile (so a
-//! retry can find it again) and `down` exits nonzero — it never silently
+//! retry can find it again) and `down` exits nonzero, it never silently
 //! drops a still-alive PID just to report a clean exit.
 
 use std::time::Duration;

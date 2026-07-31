@@ -1,5 +1,5 @@
 //! The pidfile `taipan up` writes per environment: every process it started,
-//! so `taipan down` stops exactly those and only those — by process group,
+//! so `taipan down` stops exactly those and only those, by process group,
 //! never by scanning `ps`/`lsof` for a matching command line.
 
 use std::path::Path;
@@ -15,7 +15,7 @@ pub struct ProcEntry {
     pub service: String,
     pub pid: i32,
     /// Always equal to `pid` (each process is spawned as its own group
-    /// leader via `process_group(0)`) — kept as an explicit named field so
+    /// leader via `process_group(0)`), kept as an explicit named field so
     /// the pidfile is self-documenting for anyone reading it by hand.
     pub pgid: i32,
     pub stop_signal: String,
@@ -37,7 +37,7 @@ impl From<&Spawned> for ProcEntry {
 impl ProcEntry {
     /// Parse the stored signal name back into `StopSignal`. Named distinctly
     /// from the `stop_signal` field (Rust allows the collision, but it reads
-    /// confusingly at call sites) — this is the field's typed counterpart.
+    /// confusingly at call sites), this is the field's typed counterpart.
     pub fn parsed_stop_signal(&self) -> StopSignal {
         StopSignal::parse(&self.stop_signal)
     }

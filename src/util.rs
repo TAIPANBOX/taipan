@@ -1,6 +1,6 @@
 //! Small standalone helpers: environment-name validation, timestamps,
 //! hostname, and dev-only random tokens. Kept dependency-light on purpose
-//! (this is the open adoption-channel repo, D7) — no `rand`/`hostname`
+//! (this is the open adoption-channel repo, D7), no `rand`/`hostname`
 //! crates, just `libc` (already a dependency for process-group signaling)
 //! and a direct `/dev/urandom` read.
 
@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 
 /// Environment names become path segments (`~/.taipan/environments/<name>.json`)
 /// and bearer-key org segments (`taipan-<name>:role`), so they are restricted
-/// to a conservative, unambiguous charset up front — fail closed rather than
+/// to a conservative, unambiguous charset up front, fail closed rather than
 /// trying to escape/sanitize something that could otherwise be a path
 /// traversal (`--name ../../etc`).
 pub fn validate_name(name: &str) -> Result<()> {
@@ -60,7 +60,7 @@ pub fn hostname() -> String {
 
 /// `n_bytes` of cryptographically-random data from `/dev/urandom`, hex
 /// encoded. Used only to mint dev-convenience bearer keys (never anything
-/// production-security-relevant) — good enough entropy, zero extra
+/// production-security-relevant), good enough entropy, zero extra
 /// dependencies.
 pub fn random_hex(n_bytes: usize) -> Result<String> {
     let mut f = File::open("/dev/urandom").context("open /dev/urandom for key generation")?;
@@ -77,7 +77,7 @@ pub fn random_hex(n_bytes: usize) -> Result<String> {
 /// not already (leaving any existing content untouched). Idryx's `--load
 /// tokenfuse:<path>` requires the file to exist before `idryx serve` starts,
 /// and an empty NDJSON file parses as zero events (see `tokenfuse.Load` in
-/// Idryx), so touching it up front is enough — there is no ordering
+/// Idryx), so touching it up front is enough, there is no ordering
 /// requirement between this and starting the gateway that will append to it.
 pub fn touch_file(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
@@ -93,7 +93,7 @@ pub fn touch_file(path: &Path) -> Result<()> {
 }
 
 /// The last `max_lines` lines of a log file, for embedding in error messages
-/// when a service fails to become healthy. Never fails — an unreadable log is
+/// when a service fails to become healthy. Never fails, an unreadable log is
 /// reported as such rather than aborting the caller's own error path.
 pub fn read_log_tail(path: &Path, max_lines: usize) -> String {
     match std::fs::read_to_string(path) {

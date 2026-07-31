@@ -1,6 +1,6 @@
 //! Process spawning and signaling. Every service is launched into its own
 //! process group (`setpgid(0, 0)` before exec, via the stable
-//! `process_group(0)` builder method) so it can later be stopped as a unit —
+//! `process_group(0)` builder method) so it can later be stopped as a unit -
 //! `taipan down` signals process GROUPS it started itself, by PID captured
 //! at spawn time. It never discovers a PID by scanning `ps`/`lsof`/`grep` and
 //! never signals a bare PID it did not just fork.
@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 
 /// The signal `taipan down` should try first for a given service, before
-/// escalating to SIGKILL. The gateway specifically needs SIGINT — its
+/// escalating to SIGKILL. The gateway specifically needs SIGINT, its
 /// shutdown future is `tokio::signal::ctrl_c()`, which is what flushes the
 /// buffered Parquet trace rows (see bank-in-a-box/run.sh's `stop_gateway`).
 /// Every other service accepts a plain SIGTERM.
@@ -60,7 +60,7 @@ pub struct Spawned {
 
 /// Spawn `program` with `args`/`envs`, stdin closed and stdout+stderr
 /// redirected to (truncated, then appended-to) `log_path`, detached into a
-/// new process group. Returns immediately after spawn — this does not wait
+/// new process group. Returns immediately after spawn, this does not wait
 /// for the process to become ready; callers do that separately (see
 /// `crate::health::wait_healthy`) so a not-yet-healthy process is still
 /// tracked and can be cleaned up.
@@ -111,7 +111,7 @@ pub fn spawn_process(
     let pid = child.id() as i32;
     // Deliberately not `child.wait()`-ed: this process must keep running
     // after `taipan up` itself exits. Dropping `Child` here does not kill or
-    // signal it (Rust's Child has no such Drop impl) — once our own process
+    // signal it (Rust's Child has no such Drop impl), once our own process
     // exits, the child is reparented to init/launchd like any other
     // independent process and reaped normally when it eventually exits.
     drop(child);
@@ -140,10 +140,10 @@ pub fn group_alive(pid: i32) -> bool {
 }
 
 /// Send `sig` to the process group led by `pid`. `ESRCH` (no such
-/// process/group) is treated as success — the target is already gone, which
+/// process/group) is treated as success, the target is already gone, which
 /// is the caller's desired end state, not an error.
 fn signal_group(pid: i32, sig: libc::c_int) -> io::Result<()> {
-    // SAFETY: same as `group_alive` — `pid` is a plain integer and `sig` is
+    // SAFETY: same as `group_alive`, `pid` is a plain integer and `sig` is
     // one of the fixed libc signal constants used below.
     let ret = unsafe { libc::kill(-pid, sig) };
     if ret == 0 {
@@ -170,7 +170,7 @@ pub enum StopOutcome {
 }
 
 /// Stop the process group led by `pid`: try `primary` first, wait up to
-/// `grace`, escalate to SIGKILL, wait up to another 3s. Never panics — every
+/// `grace`, escalate to SIGKILL, wait up to another 3s. Never panics, every
 /// outcome, including "still alive", is returned to the caller to report.
 pub fn stop_group(pid: i32, primary: StopSignal, grace: Duration) -> Result<StopOutcome> {
     if !group_alive(pid) {
@@ -201,5 +201,95 @@ fn wait_until_gone(pid: i32, timeout: Duration) -> bool {
             return !group_alive(pid);
         }
         std::thread::sleep(Duration::from_millis(150));
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use std::os::unix::process::CommandExt;
+    use std::process::Child;
+
+    /// Spawn a real child in its own process group, exactly the way `spawn`
+    /// does, and reap it on a background thread.
+    ///
+    /// The reaper is not decoration and this test module was wrong without it.
+    /// `group_alive` probes with `kill(-pid, 0)`, and an unreaped child that
+    /// has already died is a ZOMBIE: the process entry still exists, the probe
+    /// returns EPERM rather than ESRCH, and `group_alive` reads EPERM as alive,
+    /// deliberately, because "I cannot tell" must fail closed. So a test that
+    /// is itself the parent and never reaps will watch a corpse read as living
+    /// and then watch `stop_group` escalate to SIGKILL against it.
+    ///
+    /// Production does not have this problem: `taipan up` exits, its children
+    /// are reparented to init, and init reaps them, so by the time a separate
+    /// `taipan down` probes the group there is nothing unreaped left. The
+    /// reaper thread here is what makes the test model that rather than a
+    /// situation the product never meets.
+    fn spawn_group_reaped(program: &str, args: &[&str]) -> i32 {
+        let mut cmd = Command::new(program);
+        cmd.args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        CommandExt::process_group(&mut cmd, 0);
+        let child: Child = cmd.spawn().expect("spawn test child");
+        let pid = child.id() as i32;
+        std::thread::spawn(move || {
+            let mut child = child;
+            let _ = child.wait();
+        });
+        pid
+    }
+
+    #[test]
+    fn stop_group_actually_removes_the_group() {
+        let pid = spawn_group_reaped("sleep", &["30"]);
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(group_alive(pid), "a just-spawned group must read as alive");
+
+        let outcome = stop_group(pid, StopSignal::Term, Duration::from_secs(5)).expect("stop");
+        assert_eq!(outcome, StopOutcome::Stopped);
+        assert!(
+            !group_alive(pid),
+            "after stop_group reported Stopped the group must actually be gone.              That is the whole claim behind `taipan down` being complete."
+        );
+    }
+
+    #[test]
+    fn stopping_twice_is_a_no_op_not_an_error() {
+        let pid = spawn_group_reaped("sleep", &["30"]);
+        std::thread::sleep(Duration::from_millis(150));
+        stop_group(pid, StopSignal::Term, Duration::from_secs(5)).expect("first stop");
+
+        let again = stop_group(pid, StopSignal::Term, Duration::from_secs(5)).expect("second stop");
+        assert_eq!(
+            again,
+            StopOutcome::AlreadyGone,
+            "`taipan down` run twice must be a no-op the second time, not an error"
+        );
+    }
+
+    #[test]
+    fn a_group_that_ignores_the_primary_signal_is_force_killed() {
+        // `trap '' TERM` sets SIGTERM to SIG_IGN, and an ignored disposition
+        // survives exec, so this is a single `sleep` that cannot be stopped by
+        // SIGTERM. Without this case nothing shows the SIGKILL escalation is
+        // ever taken, and an escalation path that never runs is a comment.
+        let pid = spawn_group_reaped("sh", &["-c", "trap '' TERM; exec sleep 30"]);
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(group_alive(pid));
+
+        let outcome = stop_group(pid, StopSignal::Term, Duration::from_millis(500)).expect("stop");
+        assert_eq!(
+            outcome,
+            StopOutcome::ForceKilled,
+            "a group that ignores the primary signal must be reported as \
+             force-killed, never as a clean stop"
+        );
+        assert!(
+            !group_alive(pid),
+            "after ForceKilled the group must be gone"
+        );
     }
 }

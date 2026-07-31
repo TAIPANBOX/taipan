@@ -6,7 +6,7 @@
 //! current working directory: run `taipan up` from inside the taipan
 //! checkout (workspace = that dir, siblings = its parent's children) or from
 //! the shared parent directory itself (workspace = that dir, siblings = its
-//! own children) — both are tried. `--workspace <dir>` overrides either
+//! own children), both are tried. `--workspace <dir>` overrides either
 //! guess for anyone whose checkouts live elsewhere.
 //!
 //! No path here is ever hardcoded beyond this documented sibling layout.
