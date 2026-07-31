@@ -73,7 +73,10 @@ an absent invariant.
 2. **Stop by process group, never by a PID discovered by scanning.** Signal the
    group taipan itself created. Never derive a target from `ps`, `lsof`, `ss` or
    a port lookup: those find whatever happens to hold the port right now, which
-   on a developer machine is regularly not our process at all. *(not enforced)*
+   on a developer machine is regularly not our process at all.
+   *(gate: `scripts/no-process-scanning.sh`, which also requires every
+   `libc::kill` to live in `procutil`, the module that owns every PID this
+   program may touch)*
 3. **Dependencies stay at the declared set**: `clap`, `serde`, `serde_json`,
    `anyhow`, `tracing`, `tracing-subscriber`, `libc`. Each is justified by a
    comment in `Cargo.toml`; a new one needs the user, and a new comment saying
@@ -98,11 +101,16 @@ an absent invariant.
 
 This list is debt, and it is here to stay visible rather than to be tidy.
 
-**Held by this file alone: invariants 2, 3, 4 and 6.** Invariant 5 is half
+**Held by this file alone: invariants 3, 4 and 6.** Invariant 5 is half
 held.
 
-- **Invariant 2** is checkable and worth it: fail if the source contains a call
-  to `ps`, `lsof` or `ss` anywhere in the stop path. The regression mode is
+- **Invariant 2** is now `scripts/no-process-scanning.sh`. It checks the SOURCE
+  rather than a running binary, because the point is to refuse the edit. The way
+  this invariant gets lost is a stubborn shutdown: something will not die, and
+  the obvious fix is to look up whatever holds the port. That works every time
+  until the one time it kills somebody's editor or a colleague's service on a
+  shared box. Verified by breaking twice: an `lsof` lookup, and a `libc::kill`
+  outside `procutil`. The regression mode is
   somebody "fixing" a stubborn shutdown by looking up whatever holds the port.
 - **Invariant 3** is a dependency allow-list, the same shape as the one in
   `mockryx`, perhaps thirty lines.
