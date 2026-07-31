@@ -1,5 +1,5 @@
 //! The descriptor `taipan up` writes to `~/.taipan/environments/<name>.json`
-//! — the exact artifact the Genaryx console watches for auto-discovery
+//!, the exact artifact the Genaryx console watches for auto-discovery
 //! (itrat-console `07-integrations-and-connectors.md` §7, decision D6):
 //!
 //! ```text
@@ -11,7 +11,7 @@
 //!
 //! `unavailable` and `logs_dir` are additive fields beyond that shape (the
 //! envelope convention used everywhere else in this stack is
-//! `additionalProperties: true` — consumers tolerate fields they don't know
+//! `additionalProperties: true`, consumers tolerate fields they don't know
 //! about). `unavailable` is how a degraded `--with` service is reported
 //! honestly instead of silently omitted.
 

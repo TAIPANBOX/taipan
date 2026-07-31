@@ -25,7 +25,7 @@ const SKIP_DIRS: &[&str] = &[
 /// True when `marker` is missing, or any file under `source_root` with an
 /// extension in `extensions` (or a root-relative name in `extra_files`, e.g.
 /// `Cargo.lock`) has been modified more recently than `marker`. A missing or
-/// unreadable `source_root` is also treated as stale — fail toward rebuilding,
+/// unreadable `source_root` is also treated as stale, fail toward rebuilding,
 /// never toward silently serving a wrong binary.
 pub fn is_stale(
     marker: &Path,

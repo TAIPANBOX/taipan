@@ -20,7 +20,7 @@
 //!
 //! Fail-closed rules this module enforces:
 //! - A failure building/starting/health-checking the mandatory gateway or
-//!   cloud aborts the whole command and stops anything already started —
+//!   cloud aborts the whole command and stops anything already started -
 //!   never a half-up stack.
 //! - A failure in an opt-in `--with` service does NOT tear down an
 //!   already-healthy mandatory pair; it is recorded in the descriptor's

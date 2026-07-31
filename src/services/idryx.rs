@@ -1,9 +1,9 @@
-//! Idryx (identity/access plane). `serve` loads its graph once at startup —
-//! it does not tail the bus — so it is started with `--load
+//! Idryx (identity/access plane). `serve` loads its graph once at startup -
+//! it does not tail the bus, so it is started with `--load
 //! tokenfuse:<events dir>/tokenfuse.ndjson`, mirroring
 //! `bank-in-a-box/run.sh`'s `idryx detect --load tokenfuse:...` but as a
 //! long-running server. That file is guaranteed to exist (even if empty,
-//! which parses as zero identities/events — see `Idryx.../tokenfuse.Load`)
+//! which parses as zero identities/events, see `Idryx.../tokenfuse.Load`)
 //! because `commands::up` touches it before any service starts. Idryx's API
 //! has no auth of its own (loopback design, 07 §4.4; its default :8080
 //! collides with Cloud, hence the `--addr` remap to :8081).

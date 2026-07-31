@@ -1,6 +1,6 @@
 //! `taipan demo`: append a small batch of synthetic agent-event envelopes to
 //! the shared events directory, so a fresh environment has something to look
-//! at before any real traffic flows. Deliberately simple — a distinct
+//! at before any real traffic flows. Deliberately simple, a distinct
 //! `demo.ndjson` file, clearly labeled synthetic in its own payload, kept
 //! separate from the real per-service NDJSON files. The Genaryx console's
 //! own `demo` generator (richer, shaped like real campaigns) is a different
@@ -17,7 +17,7 @@ use crate::home::TaipanHome;
 use crate::util::validate_name;
 
 /// (source, type, severity) triples drawn from the event-type registry (07
-/// §2) — a representative, not exhaustive, spread across services.
+/// §2), a representative, not exhaustive, spread across services.
 const SAMPLE_EVENTS: &[(&str, &str, &str)] = &[
     ("tokenfuse", "budget_exhausted", "critical"),
     ("tokenfuse", "spend_spike", "high"),
