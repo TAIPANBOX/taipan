@@ -48,6 +48,17 @@ cargo test --all
 ./scripts/no-panic.sh
 ```
 
+## Running the gates
+
+```sh
+git config core.hooksPath .githooks   # once, per clone
+```
+
+There is no CI in this repository, so `.githooks/pre-push` is the ONLY thing
+that runs the gates above. Without that one line they are scripts nobody calls,
+which is a comment with an exit code. `git push --no-verify` skips them, and
+should be rare enough to be worth explaining.
+
 ## Hard invariants
 
 Each one carries how it is held today. Use `(gate: ...)`, `(test: ...)`,
