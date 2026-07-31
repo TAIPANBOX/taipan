@@ -73,7 +73,12 @@ an absent invariant.
 5. **`up` is idempotent and `down` is complete.** Running `up` twice must not
    start a second copy or corrupt the pidfile, and `down` must leave nothing
    holding a port. The second run is the real test: works twice, from empty,
-   untouched. *(not enforced)*
+   untouched.
+   *(partly gated: `stop_group_actually_removes_the_group`,
+   `stopping_twice_is_a_no_op_not_an_error`,
+   `a_group_that_ignores_the_primary_signal_is_force_killed` hold the signalling
+   half against real process groups. The end-to-end half, `taipan up` twice
+   against a built stack, is untested and needs the stack built.)*
 6. **No Docker.** That is the entire reason this exists next to `stack-single`.
    A dependency that needs a container runtime defeats the point.
    *(not enforced)*
@@ -82,16 +87,32 @@ an absent invariant.
 
 This list is debt, and it is here to stay visible rather than to be tidy.
 
-**Held by this file alone: invariants 2, 3, 4, 5 and 6.**
+**Held by this file alone: invariants 2, 3, 4 and 6.** Invariant 5 is half
+held.
 
 - **Invariant 2** is checkable and worth it: fail if the source contains a call
   to `ps`, `lsof` or `ss` anywhere in the stop path. The regression mode is
   somebody "fixing" a stubborn shutdown by looking up whatever holds the port.
 - **Invariant 3** is a dependency allow-list, the same shape as the one in
   `mockryx`, perhaps thirty lines.
-- **Invariant 5** is the highest value and the hardest: an integration test that
-  runs `up`, `up`, `down`, then asserts no listener remains and no stale pidfile
-  is left. Everything about this repo's promise lives in that test.
+- **Invariant 5**'s signalling half is now three tests against real process
+  groups: a stopped group is actually gone, stopping twice is a no-op rather
+  than an error, and a group that ignores SIGTERM is escalated to SIGKILL and
+  reported as force-killed. They use `group_alive`, never `ps` or `lsof`, so
+  they obey invariant 2 rather than checking it through a mechanism this repo
+  forbids.
+
+  **A trap worth knowing before writing more of these.** The first version
+  never reaped its children. `group_alive` probes with `kill(-pid, 0)`, and an
+  unreaped dead child is a zombie: the entry still exists, the probe returns
+  `EPERM` not `ESRCH`, and `group_alive` reads `EPERM` as alive deliberately,
+  because "I cannot tell" must fail closed. The tests watched a corpse read as
+  living. Production never meets this, because `up` exits and init reaps, so
+  any test that is itself the parent must reap on a thread.
+
+  The half still missing is end-to-end: `up`, `up`, `down` against a built
+  stack, asserting no listener remains and no stale pidfile is left. That needs
+  the four products built, which is why it is not here yet.
 
 ## Standing rule
 
