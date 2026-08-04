@@ -8,16 +8,24 @@ writes a descriptor that other tools (the Genaryx console, in particular) can
 auto-discover. `taipan down` stops exactly what it started, cleanly, with no
 orphaned processes.
 
-It generalizes the pattern proven in
-[`bank-in-a-box/run.sh`](https://github.com/TAIPANBOX/bank-in-a-box) into a
-reusable CLI.
+It generalizes the pattern proven in `bank-in-a-box/run.sh` into a reusable
+CLI. That repository is local and has never been published, so there is no link
+to give: `TAIPANBOX/bank-in-a-box` does not resolve, and this line carried a
+URL to it until 2026-08-04.
 
-This is the private Genaryx orchestrator: the descriptor, auto-discovery,
-enforcement presets and `--with` wiring that make the Genaryx console light up
-over a real stack. The free, minimal "run the open stack locally" launcher for
-adopters lives in the public [stack-up](https://github.com/TAIPANBOX/stack-up)
-repo instead. The source here stays Apache-2.0 (see [LICENSE](LICENSE)); the
-repo is private as part of the Genaryx product boundary.
+This is the Genaryx orchestrator: the descriptor, auto-discovery, enforcement
+presets and `--with` wiring that make the Genaryx console light up over a real
+stack. The one-command "run the open stack locally" launcher for adopters lives
+in the public [stack-up](https://github.com/TAIPANBOX/stack-up) repo instead,
+and the split between them is scope, not price.
+
+Both are Apache-2.0 (see [LICENSE](LICENSE)) and nothing in this estate is sold.
+This paragraph used to call stack-up "the free, minimal launcher" and say this
+repo was "private as part of the Genaryx product boundary", which was true under
+the open-core model and stopped being true when that model was dropped: Genaryx
+itself went public and Apache-2.0 on 2026-07-27, and there is no paid tier left
+for a boundary to protect. The repo is still private, which is now a decision
+nobody has revisited rather than a product line.
 
 ## What it starts
 
