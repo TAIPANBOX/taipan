@@ -17,32 +17,28 @@ pub const PORT: u16 = 8080;
 const HEALTH_PATH: &str = "/healthz";
 
 /// `keys_spec` is a ready-made `TOKENFUSE_CLOUD_KEYS` value
-/// (`"key:org:role,key:org:role"`, see `crate::keys`). `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1`
-/// is set alongside it as the documented dev-only fallback (task spec: "cloud
-/// 8080 (ALLOW_DEVKEY on for dev)") - belt and suspenders, not a substitute
-/// for the minted keys, which are what the descriptor actually references.
+/// (`"key:org:role,key:org:role"`, see `crate::keys`). `devkey` is
+/// `UpArgs.devkey` verbatim, i.e. whether the operator actually passed
+/// `taipan up --devkey`.
 ///
-/// `keys_spec` may deliberately be empty: `commands::up`'s `--devkey` mode
-/// passes `""` here on purpose, which (combined with `ALLOW_DEVKEY=1` above)
-/// makes `tokenfuse-cloud`'s own `parse_keys` activate the literal `devkey`
-/// bearer fallback instead of any minted key - see `commands::up::run` for
-/// why.
+/// `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1` is set if and only if `devkey` is true.
+/// It used to be set unconditionally, on the reasoning that
+/// `tokenfuse-cloud`'s own `parse_keys` only activates the literal `devkey`
+/// bearer fallback when the parsed key map is empty (true: see
+/// `commands::up::run`'s `--devkey` handling for why `keys_spec` is empty in
+/// that mode and non-empty otherwise), so a minted, non-empty `keys_spec`
+/// made the always-on flag harmless in practice. That reasoning holds only as
+/// long as it stays true of a parser this crate does not own; setting the
+/// flag here only when the operator asked for it removes the dependency on
+/// another repo's behaviour rather than relying on it.
 pub fn start(
     bin: &Path,
     keys_spec: &str,
+    devkey: bool,
     log_path: &Path,
     healthz_timeout: Duration,
 ) -> Result<StartedService> {
-    let envs = vec![
-        ("PORT".to_string(), PORT.to_string()),
-        // Bind loopback only: this deploy and the on-box web shell reach the
-        // money API at 127.0.0.1, and remote access goes through the tunnel,
-        // never a raw open port. The binary already defaults to loopback; this
-        // is explicit belt-and-suspenders.
-        ("TOKENFUSE_CLOUD_HOST".to_string(), "127.0.0.1".to_string()),
-        ("TOKENFUSE_CLOUD_KEYS".to_string(), keys_spec.to_string()),
-        ("TOKENFUSE_CLOUD_ALLOW_DEVKEY".to_string(), "1".to_string()),
-    ];
+    let envs = build_envs(keys_spec, devkey);
 
     let spawned =
         procutil::spawn_process("cloud", bin, &[], &envs, None, log_path, StopSignal::Term)
@@ -69,4 +65,60 @@ pub fn start(
             mode: None,
         },
     })
+}
+
+/// The fixed environment `start` hands to the spawned binary. Pulled out of
+/// `start` itself, which is otherwise all I/O (spawn, healthz poll), so the
+/// `ALLOW_DEVKEY` decision has a seam to test without spawning a real
+/// process.
+fn build_envs(keys_spec: &str, devkey: bool) -> Vec<(String, String)> {
+    let mut envs = vec![
+        ("PORT".to_string(), PORT.to_string()),
+        // Bind loopback only: this deploy and the on-box web shell reach the
+        // money API at 127.0.0.1, and remote access goes through the tunnel,
+        // never a raw open port. The binary already defaults to loopback; this
+        // is explicit belt-and-suspenders.
+        ("TOKENFUSE_CLOUD_HOST".to_string(), "127.0.0.1".to_string()),
+        ("TOKENFUSE_CLOUD_KEYS".to_string(), keys_spec.to_string()),
+    ];
+    if devkey {
+        envs.push(("TOKENFUSE_CLOUD_ALLOW_DEVKEY".to_string(), "1".to_string()));
+    }
+    envs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn devkey_true_sets_allow_devkey() {
+        let envs = build_envs("", true);
+        assert!(
+            envs.contains(&("TOKENFUSE_CLOUD_ALLOW_DEVKEY".to_string(), "1".to_string())),
+            "devkey=true must set TOKENFUSE_CLOUD_ALLOW_DEVKEY=1, got {envs:?}"
+        );
+    }
+
+    #[test]
+    fn devkey_false_does_not_set_allow_devkey() {
+        let envs = build_envs("abc123:default:admin,def456:default:viewer", false);
+        assert!(
+            !envs
+                .iter()
+                .any(|(k, _)| k == "TOKENFUSE_CLOUD_ALLOW_DEVKEY"),
+            "devkey=false must not set TOKENFUSE_CLOUD_ALLOW_DEVKEY at all, got {envs:?}"
+        );
+    }
+
+    #[test]
+    fn keys_spec_is_passed_through_unchanged_either_way() {
+        for devkey in [true, false] {
+            let envs = build_envs("the-spec", devkey);
+            assert!(
+                envs.contains(&("TOKENFUSE_CLOUD_KEYS".to_string(), "the-spec".to_string())),
+                "TOKENFUSE_CLOUD_KEYS must reach the process unchanged (devkey={devkey}), got {envs:?}"
+            );
+        }
+    }
 }

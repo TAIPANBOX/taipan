@@ -119,18 +119,20 @@ pub fn run(args: UpArgs) -> Result<()> {
     let org = format!("taipan-{}", args.name);
 
     // `--devkey`: pass Cloud an EMPTY `TOKENFUSE_CLOUD_KEYS` spec instead of
-    // minted keys. `services::cloud::start` already sets
-    // `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1` unconditionally; tokenfuse-cloud's own
-    // `parse_keys(spec, allow_devkey)` only inserts the literal `devkey`
-    // fallback principal (org=default, role=admin) when the parsed key map
-    // is empty, so an empty spec here is what actually flips it on (a
-    // non-empty spec would just mint real keys as before, devkey or not).
-    // The keyfile then carries the literal string "devkey" under both
-    // labels, so a console that auto-discovers this environment reads a
-    // bearer Cloud genuinely accepts for pairing, instead of a minted admin
-    // key that 401s at `/v1/pair/new` while devkey is the only active
-    // credential (issue #20). Dev-only: never the default, only behind this
-    // explicit flag.
+    // minted keys, and `services::cloud::start` sets
+    // `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1` only because `args.devkey` is passed
+    // through to it below; tokenfuse-cloud's own `parse_keys(spec,
+    // allow_devkey)` only inserts the literal `devkey` fallback principal
+    // (org=default, role=admin) when both are true: the flag is set AND the
+    // parsed key map is empty. An empty spec here is what makes the second
+    // half true (a non-empty spec would just mint real keys as before,
+    // devkey or not); this flag is what makes the first half true, and now
+    // only `--devkey` sets it. The keyfile then carries the literal string
+    // "devkey" under both labels, so a console that auto-discovers this
+    // environment reads a bearer Cloud genuinely accepts for pairing,
+    // instead of a minted admin key that 401s at `/v1/pair/new` while devkey
+    // is the only active credential (issue #20). Dev-only: never the
+    // default, only behind this explicit flag.
     let (cloud_keys_spec, cloud_admin_secret, cloud_viewer_secret) = if args.devkey {
         (String::new(), "devkey".to_string(), "devkey".to_string())
     } else {
@@ -206,7 +208,13 @@ pub fn run(args: UpArgs) -> Result<()> {
     }
 
     let cloud_log = logs_dir.join("cloud.log");
-    match services::cloud::start(&cloud_bin, &cloud_keys_spec, &cloud_log, healthz_timeout) {
+    match services::cloud::start(
+        &cloud_bin,
+        &cloud_keys_spec,
+        args.devkey,
+        &cloud_log,
+        healthz_timeout,
+    ) {
         Ok(svc) => {
             started.push(svc.spawned);
             services_section.insert("cloud".to_string(), svc.entry);
