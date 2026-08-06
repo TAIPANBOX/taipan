@@ -147,27 +147,39 @@ only carries a reference label (`taipan/<name>/<key-name>`) pointing at that
 file's own key names: the same "value in a secret store, reference in the
 discovered file" split the console's design calls for; a future
 Keychain-backed connector replaces the local keyfile without changing the
-descriptor shape. Cloud is additionally started with
-`TOKENFUSE_CLOUD_ALLOW_DEVKEY=1` as a documented, dev-only fallback
-credential alongside the minted keys.
+descriptor shape. With minted keys, Cloud is started with no
+`TOKENFUSE_CLOUD_ALLOW_DEVKEY` at all: the variable is set only under
+`--devkey`, below.
 
 ### `--devkey`
 
 With minted keys present, `tokenfuse-cloud`'s own key parser never activates
-its `devkey` fallback (it only fires when the parsed key map is empty), so
-pairing a device against a minted admin key over `/v1/pair/new` currently
-401s even though reads with that same key work fine. `taipan up --devkey`
-works around this: Cloud is started with an empty `TOKENFUSE_CLOUD_KEYS`
-instead of minted keys (still with `TOKENFUSE_CLOUD_ALLOW_DEVKEY=1`), which
-switches on the literal `devkey` bearer fallback, and `<name>.keys.json`
+its `devkey` fallback (it only fires when both `TOKENFUSE_CLOUD_ALLOW_DEVKEY`
+is set AND the parsed key map is empty), so pairing a device against a
+minted admin key over `/v1/pair/new` currently 401s even though reads with
+that same key work fine. `taipan up --devkey` works around this: Cloud is
+started with an empty `TOKENFUSE_CLOUD_KEYS` instead of minted keys, and
+`TOKENFUSE_CLOUD_ALLOW_DEVKEY=1` is set for exactly this run, which together
+switch on the literal `devkey` bearer fallback, and `<name>.keys.json`
 carries the literal string `"devkey"` under both the `cloud_admin` and
 `cloud_viewer` labels. An auto-discovering console then reads and pairs with
 a bearer Cloud genuinely accepts. The descriptor's `keys.cloud_admin_ref` /
 `keys.cloud_viewer_ref` shape is unchanged; only the secret those refs
 resolve to is different. This is a dev convenience for unblocking
 console auto-pairing locally, never a production mode: without `--devkey`,
-`up` behaves exactly as before (minted keys, devkey fallback unused because
-the key map is never empty).
+`up` behaves exactly as before (minted keys, and `TOKENFUSE_CLOUD_ALLOW_DEVKEY`
+is not set at all, so there is no fallback for an empty key map to activate
+even in principle).
+
+`TOKENFUSE_CLOUD_ALLOW_DEVKEY` used to be set unconditionally, on every
+`taipan up`, on the reasoning that a non-empty, minted `TOKENFUSE_CLOUD_KEYS`
+keeps the fallback dormant regardless. That is true of `tokenfuse-cloud`'s
+current parser, and it is also a property of a repo this one does not own:
+relying on it made every environment carry a live opt-in for a fallback
+credential that only one flag was ever supposed to turn on. Fixed so the
+variable is set only when `--devkey` was actually passed (`src/services/cloud.rs`,
+covered by unit tests on the environment-building function it was extracted
+into).
 
 ## Stopping cleanly
 
