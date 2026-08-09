@@ -46,7 +46,12 @@ cargo fmt --all -- --check
 cargo clippy --all-targets
 cargo test --all
 ./scripts/no-panic.sh
+./scripts/no-process-scanning.sh
+./scripts/gates-have-teeth.sh     # invariant 7; needs a clean tree
 ```
+
+`no-process-scanning.sh` was missing from this list until 2026-08-09 while the
+hook ran it, so "run every gate below" was a smaller instruction than the hook's.
 
 ## Running the gates
 
@@ -93,6 +98,28 @@ an absent invariant.
    `a_group_that_ignores_the_primary_signal_is_force_killed` hold the signalling
    half against real process groups. The end-to-end half, `taipan up` twice
    against a built stack, is untested and needs the stack built.)*
+7. **Every gate here is proven able to fail, by planting its fault and requiring
+   the failure.** A gate that has quietly stopped catching anything looks exactly
+   like a gate with nothing to catch, and in this repository nothing else would
+   ever say so: there is no CI, and the hook is the only thing that runs them.
+
+   Both gates were found green over nothing on 2026-08-09. `no-process-scanning.sh`
+   greps `src/` twice and `no-panic.sh` walks it with rglob; a grep over a missing
+   directory prints nothing and an rglob over one yields nothing, so both exited 0
+   and printed that the code was clean having read none of it. Renaming or moving
+   the crate is ordinary housekeeping.
+   *(gate: `scripts/gates-have-teeth.sh`, 7 cases: three planted faults, two
+   non-faults that must NOT fire, and both subjects taken away. The non-faults are
+   the ones worth keeping: `libc::kill` inside `procutil.rs` is exactly where
+   invariant 2 puts it, and an `unwrap` inside a `#[cfg(test)]` module is allowed
+   by invariant 1. A gate that flagged either would be switched off, and the real
+   cases would go with it.)*
+
+   In the hook it takes `--skip-if-dirty`, the only exit 0 here that checked
+   nothing. It mutates tracked files, and with no CI the alternative was refusing
+   every push with uncommitted work in the tree, which is how a hook becomes
+   something people disable. The skip prints why.
+
 6. **No Docker.** That is the entire reason this exists next to `stack-single`.
    A dependency that needs a container runtime defeats the point.
    *(not enforced)*
