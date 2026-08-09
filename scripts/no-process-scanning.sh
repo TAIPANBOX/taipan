@@ -25,6 +25,19 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 problems=0
 
+# The subject first. Both greps below read `src/`, and grep over a directory
+# that is not there prints nothing, so this printed "no process discovery" and
+# exited 0 having read no Rust at all. Renaming or moving the crate is ordinary
+# housekeeping and would have turned this into a check on nothing while its own
+# sentence claimed the opposite. Found 2026-08-09.
+rs_count=$(git ls-files 'src/**/*.rs' 'src/*.rs' | wc -l | tr -d ' ')
+if [ "$rs_count" -eq 0 ]; then
+	echo "FAIL: no .rs file under src/ is tracked, so this measured nothing."
+	echo "      It cannot say nothing scans for processes if it read no code."
+	echo "      If the crate moved, this check has to move with it."
+	exit 1
+fi
+
 # A process-discovery tool named as a command to run.
 BANNED='Command::new\("(ps|lsof|ss|pgrep|pidof|fuser|netstat)"\)|"(pgrep|pidof|lsof|fuser|netstat)"'
 

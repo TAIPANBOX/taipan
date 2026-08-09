@@ -31,7 +31,17 @@ BANNED = re.compile(r"\.unwrap\(\)|\.expect\(|(?<![\w!])panic!\(|unimplemented!\
 
 fail = False
 
-for path in sorted(pathlib.Path("src").rglob("*.rs")):
+# The subject first, for the same reason as the sibling check: an rglob over a
+# directory that is not there yields nothing, and this printed "no unwrap,
+# expect or panic in shipping code" and exited 0 having opened no file.
+files = sorted(pathlib.Path("src").rglob("*.rs"))
+if not files:
+    print("FAIL: no .rs file under src/, so this measured nothing.")
+    print("      It cannot say shipping code never panics if it read none.")
+    print("      If the crate moved, this check has to move with it.")
+    sys.exit(1)
+
+for path in files:
     in_test_mod = False
     test_mod_depth = 0
     depth = 0
