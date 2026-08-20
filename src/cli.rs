@@ -57,6 +57,13 @@ pub struct UpArgs {
     /// (unblocks console auto-pairing, not for production).
     #[arg(long)]
     pub devkey: bool,
+
+    /// Full provider endpoint the gateway forwards to, e.g.
+    /// `https://api.anthropic.com/v1/messages`. Without it the gateway runs
+    /// on its built-in stub and the spend it reports is invented, which `up`
+    /// says out loud every time.
+    #[arg(long)]
+    pub upstream: Option<String>,
 }
 
 #[derive(clap::Args)]

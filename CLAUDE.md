@@ -53,6 +53,19 @@ cargo test --all
 ./scripts/gates-have-teeth.sh     # invariant 7; needs a clean tree
 ```
 
+And one that is deliberately NOT in the hook:
+
+```sh
+./scripts/e2e.sh                  # invariant 5's end-to-end half
+```
+
+It starts real processes and binds 4100 and 8080. A hook that did that on every
+push would fight whatever the operator has open, including an environment they
+are using, and a hook that fights the operator is one they disable. Run it
+before anything that touches `up`, `down`, the descriptor or the process path.
+It refuses to start when a port is busy rather than waiting, because waiting
+ends in taking a port from a process this repository did not start.
+
 `no-process-scanning.sh` was missing from this list until 2026-08-09 while the
 hook ran it, so "run every gate below" was a smaller instruction than the hook's.
 
@@ -126,11 +139,21 @@ an absent invariant.
    start a second copy or corrupt the pidfile, and `down` must leave nothing
    holding a port. The second run is the real test: works twice, from empty,
    untouched.
-   *(partly gated: `stop_group_actually_removes_the_group`,
-   `stopping_twice_is_a_no_op_not_an_error`,
-   `a_group_that_ignores_the_primary_signal_is_force_killed` hold the signalling
-   half against real process groups. The end-to-end half, `taipan up` twice
-   against a built stack, is untested and needs the stack built.)*
+   *(gate: both halves now. The signalling half is
+   `stop_group_actually_removes_the_group`,
+   `stopping_twice_is_a_no_op_not_an_error` and
+   `a_group_that_ignores_the_primary_signal_is_force_killed`, against real
+   process groups. The end-to-end half is `scripts/e2e.sh`, running
+   `up`, `up`, `down`, `down`, `up` against a real stack and checking the ports
+   by binding them rather than by looking a process up, which invariant 2
+   forbids. It is not in the hook; see the Gates section for why.)*
+
+   What that half cost to write is the argument for having had it: it did not
+   reach a single assertion. `taipan up` had been broken against its own
+   gateway since 2026-07-25, when tokenfuse made its built-in stub opt-IN
+   (4b4b3fd) and started refusing to run with neither `TOKENFUSE_UPSTREAM` nor
+   `TOKENFUSE_ALLOW_STUB` set. taipan set neither, for four weeks, on every
+   machine, and nothing said so because nothing had ever run `up`.
 7. **Every gate here is proven able to fail, by planting its fault and requiring
    the failure.** A gate that has quietly stopped catching anything looks exactly
    like a gate with nothing to catch, and in this repository nothing else would
@@ -184,9 +207,11 @@ an absent invariant.
 
 This list is debt, and it is here to stay visible rather than to be tidy.
 
-**Held by this file alone: nothing.** Invariant 5 is half held, and that half
-is the only debt left in this list. Invariants 3 and 6 left it on 2026-08-20,
-which is why the entries below now read as history rather than as a plan.
+**Held by this file alone: nothing. Every invariant now has a gate or a test.**
+Invariants 3, 4, 6 and 5's end-to-end half all left this list on 2026-08-20,
+which is why the entries below read as history rather than as a plan. What
+remains is not an unheld invariant but an uncovered path, named at the end of
+the invariant 5 entry.
 Invariant 4 moved out of this list on 2026-08-20: its shape is now pinned by
 tests in `src/descriptor.rs`. What no test in this repository can hold is
 whether Genaryx still reads that shape, which is why a change there is still a
@@ -238,9 +263,37 @@ coordinated change with that repo rather than a local one.
   living. Production never meets this, because `up` exits and init reaps, so
   any test that is itself the parent must reap on a thread.
 
-  The half still missing is end-to-end: `up`, `up`, `down` against a built
-  stack, asserting no listener remains and no stale pidfile is left. That needs
-  the four products built, which is why it is not here yet.
+  The end-to-end half arrived 2026-08-20 as `scripts/e2e.sh` and
+  `tests/end_to_end.rs`. It covers `up`, a refused second `up` with the pidfile
+  unchanged byte for byte, `down`, a no-op second `down`, `up` again from
+  empty, and a stale pidfile being overwritten rather than mistaken for a live
+  stack.
+
+  **A trap the shape of the last one.** Rust tests have no teardown, so a panic
+  halfway through would leave the money plane running on somebody's laptop.
+  Nothing in that test asserts until `down` has run: every observation is
+  collected first, the environment is always torn down, and the verdict comes
+  last. Write the next one the same way.
+
+  Still not covered: `--with wardryx,idryx`. The end-to-end test brings up the
+  mandatory pair only, so the graceful-degradation path into `unavailable` is
+  held by unit tests on the descriptor's shape and by nothing that runs it.
+
+  **Before mutation-testing any of this, know that it can orphan a stack.**
+  @measured 2026-08-20: planting faults in `refuse_if_already_up`, in `down`'s
+  cleanup and in the gateway's env building, and running the end-to-end tests
+  against each, left `tokenfuse-gateway` and `tokenfuse-cloud` running with
+  PPID 1 and no pidfile naming them. They had to be stopped by process group by
+  hand. The root cause was NOT established: the gateway's own failure branch
+  rolls back only what that run started and does not touch the pidfile, so the
+  obvious explanation was checked and did not hold.
+
+  The lesson does not depend on the cause. These tests clean up after
+  themselves by running `down`, and mutation testing works by breaking the code
+  that `down` is made of, so the teardown is exactly what stops being reliable.
+  Check ports 4100 and 8080 after every mutant, not once at the end, and stop
+  what you find by group. The unmutated tests leave nothing; that was verified
+  separately, twice.
 
 ## Standing rule
 

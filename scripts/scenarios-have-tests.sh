@@ -41,9 +41,15 @@ if not features:
     print("      If the scenarios moved, this check has to move with them.")
     sys.exit(1)
 
-sources = sorted(pathlib.Path("src").rglob("*.rs"))
+# Both homes. Unit tests live beside the code in src/; integration tests live
+# in tests/, and invariant 5's end-to-end scenarios are bound to those. Reading
+# only src/ reported them unbound on 2026-08-20, which is this gate being right
+# about its scope and wrong about the repository.
+sources = sorted(pathlib.Path("src").rglob("*.rs")) + sorted(
+    pathlib.Path("tests").rglob("*.rs")
+)
 if not sources:
-    print("FAIL: no .rs file under src/, so this measured nothing.")
+    print("FAIL: no .rs file under src/ or tests/, so this measured nothing.")
     print("      Every tag would look unresolved, which is a different fault")
     print("      wearing the same message. If the crate moved, so must this.")
     sys.exit(1)
@@ -92,7 +98,7 @@ for path in features:
         name, tag_line = pending_tag
         tagged += 1
         if name not in known_tests:
-            print(f"FAIL: {path}:{tag_line}: @test:{name} names no test under src/")
+            print(f"FAIL: {path}:{tag_line}: @test:{name} names no test under src/ or tests/")
             print(f"      scenario: {scenario}")
             fail = True
         pending_tag = None
