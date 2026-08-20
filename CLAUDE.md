@@ -279,6 +279,22 @@ coordinated change with that repo rather than a local one.
   mandatory pair only, so the graceful-degradation path into `unavailable` is
   held by unit tests on the descriptor's shape and by nothing that runs it.
 
+  **Before mutation-testing any of this, know that it can orphan a stack.**
+  @measured 2026-08-20: planting faults in `refuse_if_already_up`, in `down`'s
+  cleanup and in the gateway's env building, and running the end-to-end tests
+  against each, left `tokenfuse-gateway` and `tokenfuse-cloud` running with
+  PPID 1 and no pidfile naming them. They had to be stopped by process group by
+  hand. The root cause was NOT established: the gateway's own failure branch
+  rolls back only what that run started and does not touch the pidfile, so the
+  obvious explanation was checked and did not hold.
+
+  The lesson does not depend on the cause. These tests clean up after
+  themselves by running `down`, and mutation testing works by breaking the code
+  that `down` is made of, so the teardown is exactly what stops being reliable.
+  Check ports 4100 and 8080 after every mutant, not once at the end, and stop
+  what you find by group. The unmutated tests leave nothing; that was verified
+  separately, twice.
+
 ## Standing rule
 
 An approved architecture decision is **not finished** until it is two things: a
