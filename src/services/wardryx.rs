@@ -148,3 +148,107 @@ pub fn start(
         },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("taipan-wardryx-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// The rule targets, read straight out of the seeded YAML. Parsed by hand
+    /// rather than with a YAML crate: invariant 3 holds the dependency set at
+    /// the declared crates, and this file's shape is fixed by the constant
+    /// three lines above the parser.
+    fn targets(yaml: &str) -> Vec<String> {
+        yaml.lines()
+            .filter_map(|l| l.trim().strip_prefix("target:"))
+            .map(|v| v.trim().trim_matches('"').to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_demo_policy_targets_only_the_mockryx_rehearsal_identities() {
+        // The safety property this policy's own doc comment claims: it "never
+        // governs an operator's own agent traffic". A widened target would not
+        // error, it would quietly start deciding on real requests.
+        let found = targets(DEMO_POLICY_YAML);
+        assert!(
+            !found.is_empty(),
+            "the demo policy must declare at least one target, found none"
+        );
+        for t in &found {
+            assert_eq!(
+                t, "agent://mockryx.local/*",
+                "every rule must stay scoped to the rehearsal identities, found {t:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_demo_policy_holds_costly_actions_and_denies_shell_exec() {
+        // Zero policies was the old default, and a stack that decides nothing
+        // reads exactly like a stack that allows everything.
+        assert!(
+            DEMO_POLICY_YAML.contains("require_human_above_usd:"),
+            "the demo policy must hold a costly action for a human"
+        );
+        assert!(
+            DEMO_POLICY_YAML.contains("deny_tool:") && DEMO_POLICY_YAML.contains("shell_exec"),
+            "the demo policy must deny shell_exec outright"
+        );
+    }
+
+    #[test]
+    fn seeding_the_policy_replaces_an_earlier_run_rather_than_appending() {
+        // The second run is the real test. An appended file grows a duplicate
+        // rule set on every `up`.
+        let dir = scratch("replace");
+        let path = dir.join("demo.wardryx-policy.yaml");
+        std::fs::write(&path, b"- name: left-over-from-an-earlier-run\n").expect("seed old file");
+
+        write_demo_policy(&path).expect("write demo policy");
+        let first = std::fs::read_to_string(&path).expect("read policy");
+        write_demo_policy(&path).expect("write demo policy again");
+        let second = std::fs::read_to_string(&path).expect("read policy again");
+
+        assert!(
+            !second.contains("left-over-from-an-earlier-run"),
+            "an earlier run's content must not survive: {second}"
+        );
+        assert_eq!(first, second, "a second seeding must not change the file");
+        assert_eq!(
+            second.matches("taipan-demo-deny-shell-exec").count(),
+            1,
+            "the rule must appear once, not once per `up`"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn seeding_the_policy_creates_the_directory_it_needs() {
+        let dir = scratch("mkdir");
+        let path = dir.join("never").join("created").join("policy.yaml");
+
+        write_demo_policy(&path).expect("write demo policy into a missing directory");
+
+        assert!(path.is_file(), "policy should exist at {}", path.display());
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read policy"),
+            DEMO_POLICY_YAML
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_wardryx_port_is_the_one_the_readme_publishes() {
+        // The README's port table is a promise to an operator, and the
+        // descriptor consumers auto-discover is built from this constant.
+        assert_eq!(PORT, 8090);
+    }
+}

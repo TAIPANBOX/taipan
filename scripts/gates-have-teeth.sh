@@ -207,6 +207,23 @@ s = open(p).read()
 open(p, "w").write(s + "\n#[allow(dead_code)]\nfn _teeth_kill(pid: i32) { unsafe { libc::kill(-pid, 0); } }\n")')" \
 	"signals a process outside procutil"
 
+# The scenarios exist so a reader can check what taipan promises without
+# reading Rust. That only holds while every scenario is actually run. The
+# realistic drift is not a deleted scenario, it is a RENAMED test: the rename
+# is ordinary housekeeping, the scenario keeps reading like a specification,
+# and nothing runs it any more.
+run_case "scenarios-have-tests: a tag naming a test that no longer exists" fail \
+	'./scripts/scenarios-have-tests.sh' \
+	"$(py 'edit("src/workspace.rs", "fn finds_a_sibling_directly_under_the_workspace_root(", "fn finds_a_sibling_directly_under_the_workspace_root_renamed(")')" \
+	"names no test under src/"
+
+run_case "scenarios-have-tests: a scenario with no tag at all" fail \
+	'./scripts/scenarios-have-tests.sh' \
+	"$(py 'p = "features/the-seeded-demo-policy.feature"
+s = open(p).read()
+open(p, "w").write(s + "\n  Scenario: A promise nobody bound to a test\n    Given nothing holds this\n")')" \
+	"no @test: tag"
+
 echo
 echo "=== and what they must NOT catch ==="
 
@@ -226,6 +243,16 @@ run_case "no-panic: an unwrap inside a test module" pass \
 s = open(p).read()
 open(p, "w").write(s + "\n#[cfg(test)]\nmod teeth_tests {\n    #[test]\n    fn t() { let v: Option<u32> = Some(1); assert_eq!(v.unwrap(), 1); }\n}\n")')"
 
+# Only ONE direction is checked, on purpose. A unit test without a scenario is
+# ordinary: not every assertion is a promise to an operator. A gate that
+# demanded a scenario per test would make people delete scenarios to keep it
+# quiet, and the real ones would go with them.
+run_case "scenarios-have-tests: a unit test with no scenario, which is allowed" pass \
+	'./scripts/scenarios-have-tests.sh' \
+	"$(py 'p = "src/cli.rs"
+s = open(p).read()
+open(p, "w").write(s + "\n#[cfg(test)]\nmod teeth_unbound {\n    #[test]\n    fn an_assertion_that_is_not_a_promise() { assert_eq!(1 + 1, 2); }\n}\n")')"
+
 echo
 echo "=== and the one this estate learned the hard way ==="
 echo "    a gate whose subject is gone must SAY so, not report OK on nothing"
@@ -240,6 +267,18 @@ subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)')" \
 
 run_case "no-process-scanning: no Rust left under src/" fail \
 	'./scripts/no-process-scanning.sh' \
+	"$(py 'import subprocess
+subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)')" \
+	"measured nothing"
+
+run_case "scenarios-have-tests: no feature file left" fail \
+	'./scripts/scenarios-have-tests.sh' \
+	"$(py 'import subprocess
+subprocess.run(["git", "mv", "features", "features-elsewhere"], check=True)')" \
+	"measured nothing"
+
+run_case "scenarios-have-tests: no Rust left under src/" fail \
+	'./scripts/scenarios-have-tests.sh' \
 	"$(py 'import subprocess
 subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)')" \
 	"measured nothing"

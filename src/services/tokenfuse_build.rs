@@ -63,3 +63,77 @@ pub fn ensure_binaries(workspace: &Workspace, home: &TaipanHome) -> Result<(Path
     );
     Ok((gateway_bin, cloud_bin))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn scratch(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("taipan-tfbuild-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// A workspace whose `tokenfuse` sibling exists but is NOT a cargo project.
+    /// That is the instrument: `cargo build` inside it cannot succeed, so a run
+    /// that returns Ok is a run that never shelled out. A test cannot otherwise
+    /// tell a skipped build from a slow one.
+    fn workspace_with_an_unbuildable_tokenfuse(label: &str) -> (PathBuf, Workspace) {
+        let root = scratch(label);
+        std::fs::create_dir_all(root.join("tokenfuse")).expect("create sibling");
+        (root.clone(), Workspace::new(root))
+    }
+
+    fn home_at(dir: &Path) -> TaipanHome {
+        TaipanHome {
+            root: dir.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn a_fresh_cached_build_is_reused_without_shelling_out_to_cargo() {
+        let (root, workspace) = workspace_with_an_unbuildable_tokenfuse("reuse");
+        let home_dir = root.join("home");
+        let home = home_at(&home_dir);
+        std::fs::create_dir_all(home.bin_dir()).expect("create bin dir");
+        for f in ["tokenfuse-gateway", "tokenfuse-cloud", ".marker-tokenfuse"] {
+            std::fs::write(home.bin_dir().join(f), b"").expect("create cached artifact");
+        }
+
+        let (gateway, cloud) =
+            ensure_binaries(&workspace, &home).expect("a fresh cache must be reused, not rebuilt");
+
+        assert_eq!(gateway, home.bin_dir().join("tokenfuse-gateway"));
+        assert_eq!(cloud, home.bin_dir().join("tokenfuse-cloud"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_missing_binary_is_not_treated_as_a_fresh_build() {
+        // The marker and the binaries can disagree: a fresh marker beside a
+        // deleted binary must still rebuild. Trusting the marker alone hands
+        // back a path to a file that is not there, and the failure lands later,
+        // at spawn time, wearing a different name.
+        let (root, workspace) = workspace_with_an_unbuildable_tokenfuse("missing-bin");
+        let home_dir = root.join("home");
+        let home = home_at(&home_dir);
+        std::fs::create_dir_all(home.bin_dir()).expect("create bin dir");
+        for f in ["tokenfuse-gateway", ".marker-tokenfuse"] {
+            std::fs::write(home.bin_dir().join(f), b"").expect("create cached artifact");
+        }
+
+        let err = ensure_binaries(&workspace, &home)
+            .expect_err("a missing cloud binary must not read as up to date");
+
+        // It got as far as trying to build, which is the whole assertion: the
+        // early return was not taken.
+        assert!(
+            err.to_string().contains("cargo build") || err.to_string().contains("tokenfuse-cloud"),
+            "expected a build attempt, got: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
