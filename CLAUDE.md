@@ -141,10 +141,10 @@ an absent invariant.
    directory prints nothing and an rglob over one yields nothing, so both exited 0
    and printed that the code was clean having read none of it. Renaming or moving
    the crate is ordinary housekeeping.
-   *(gate: `scripts/gates-have-teeth.sh`, 12 cases: five planted faults, two
-   non-faults that must NOT fire, and both subjects of both source-reading
-   gates taken away. The count was 7 until 2026-08-20, when invariant 8's gate
-   brought five more. The non-faults are
+   *(gate: `scripts/gates-have-teeth.sh`, 22 cases: ten planted faults, five
+   non-faults that must NOT fire, and seven subjects taken away. The count went
+   7 to 12 to 22 on 2026-08-20 as invariants 8, 3 and 6 each arrived with a
+   gate. The non-faults are
    the ones worth keeping: `libc::kill` inside `procutil.rs` is exactly where
    invariant 2 puts it, and an `unwrap` inside a `#[cfg(test)]` module is allowed
    by invariant 1. A gate that flagged either would be switched off, and the real
