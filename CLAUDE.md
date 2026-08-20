@@ -275,9 +275,25 @@ coordinated change with that repo rather than a local one.
   collected first, the environment is always torn down, and the verdict comes
   last. Write the next one the same way.
 
-  Still not covered: `--with wardryx,idryx`. The end-to-end test brings up the
-  mandatory pair only, so the graceful-degradation path into `unavailable` is
-  held by unit tests on the descriptor's shape and by nothing that runs it.
+  `--with wardryx,idryx` was the gap this entry named, and it closed on
+  2026-08-20. A second end-to-end test brings up all four, then runs
+  `taipan demo`, then takes them down. It moved `services/idryx.rs` from 0 to
+  62%, `services/wardryx.rs` from 44 to 82%, `commands/up.rs` from 52 to 81%
+  and `commands/demo.rs` from 0 to 92%; the crate went from 74 to 86%.
+
+  Three things it asserts are worth knowing before changing it. The descriptor
+  must name all four, because that file is what the console auto-discovers and
+  its failure mode is silence. Idryx's port must be the REMAPPED one: its own
+  default is 8080, which is Cloud's, and a descriptor carrying the default
+  sends a console to the wrong service rather than to nothing. And EVERY rule
+  in the seeded policy must carry the rehearsal glob, not just one of them: the
+  first version of that assertion asked whether the scoped target appeared in
+  the file at all, and a mutation widening one rule of two left it green.
+
+  Still not covered: `commands/down.rs` at 45%, whose remainder is the
+  partial-stop path where a process survives SIGKILL, and `health.rs` at 69%,
+  whose remainder is the timeout that waits out the full budget by definition.
+  Neither is something a test can arrange on this platform.
 
   **Before mutation-testing any of this, know that it can orphan a stack.**
   @measured 2026-08-20: planting faults in `refuse_if_already_up`, in `down`'s
