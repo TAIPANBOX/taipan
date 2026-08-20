@@ -106,7 +106,11 @@ an absent invariant.
    each has a comment above it. A comment governs the run of lines under it:
    `serde`/`serde_json` and `tracing`/`tracing-subscriber` are one decision
    each, and a gate that flagged the second of each pair would be switched off
-   with the real cases inside it.)*
+   with the real cases inside it. The comment half is therefore weaker than it
+   reads: it catches a crate sitting above EVERY comment in the section, and it
+   does NOT catch a comment deleted in the middle, which merely merges its
+   crates into the group above. `gates-have-teeth.sh` reported the wider case
+   TOOTHLESS, and the claim was narrowed rather than the check trusted.)*
 4. **The descriptor is a cross-repo contract.** Genaryx auto-discovers it. A
    field rename or a path change is a coordinated change with that repo, and
    its failure mode is silence, not an error.

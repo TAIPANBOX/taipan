@@ -103,6 +103,18 @@ for gone in sorted(allowed - declared):
 # --- and each one justified where a reader will look ------------------------
 # Invariant 3 does not only cap the count, it says each crate is "justified by
 # a comment in Cargo.toml". A list with no reasons is a list nobody can audit.
+#
+# WHAT THIS HALF CAN AND CANNOT CATCH, because the difference is not obvious
+# and gates-have-teeth.sh found it rather than a reader.
+#
+# A comment governs the RUN of lines beneath it, because `serde`/`serde_json`
+# and `tracing`/`tracing-subscriber` are one decision each. That rule and
+# "every crate has its own comment" cannot both hold: deleting one comment
+# merely merges its crates into the group above, and the result still satisfies
+# the run rule. So this catches a crate that sits above EVERY comment in the
+# section, and it does not catch a deleted comment in the middle. Narrowed to
+# the true claim on 2026-08-20 rather than left asserting the wider one, which
+# the harness showed was not held.
 cargo_toml = pathlib.Path("Cargo.toml").read_text().splitlines()
 try:
     start = cargo_toml.index("[dependencies]")

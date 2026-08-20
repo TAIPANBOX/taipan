@@ -237,9 +237,15 @@ run_case "declared-deps: a named crate that Cargo.toml no longer declares" fail 
 	"$(py 'edit("CLAUDE.md", "`libc`, `chrono`. Each is", "`libc`, `chrono`, `regex`. Each is")')" \
 	"no longer declares it"
 
-run_case "declared-deps: a dependency with no reason beside it" fail \
+# The comment half holds one property and not the wider one it reads like.
+# Deleting a comment in the MIDDLE merges its crates into the group above and
+# is not caught, because a comment governs the run beneath it. What is caught
+# is a crate sitting above every comment in the section. This case was written
+# against the middle first, and this harness reported it TOOTHLESS, which is
+# how the claim came to be narrowed instead of the check being trusted.
+run_case "declared-deps: a crate above every comment in the section" fail \
 	'./scripts/declared-deps.sh' \
-	"$(py 'edit("Cargo.toml", "# RFC 3339 timestamps for created_at / pidfile / demo events.\n", "")')" \
+	"$(py 'edit("Cargo.toml", "[dependencies]\n# CLI parsing.\n", "[dependencies]\nonce_cell = \"1\"\n# CLI parsing.\n")')" \
 	"no comment above it"
 
 # invariant 6: the promise is that no container runtime is needed. A single
