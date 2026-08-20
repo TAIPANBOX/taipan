@@ -141,4 +141,63 @@ mod tests {
     fn hostname_is_nonempty() {
         assert!(!hostname().is_empty());
     }
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("taipan-util-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    #[test]
+    fn a_log_tail_is_returned_for_a_service_that_failed_to_start() {
+        // This runs only on the failure path: the path least likely to be
+        // exercised by hand, and the one an operator reads in a hurry.
+        let dir = scratch("log-tail");
+        let path = dir.join("gateway.log");
+        let body: String = (1..=10).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&path, body).expect("write log");
+
+        let tail = read_log_tail(&path, 3);
+
+        assert_eq!(tail, "line 8\nline 9\nline 10");
+        assert!(
+            !tail.contains("line 7"),
+            "the tail must not run past max_lines: {tail}"
+        );
+
+        // An unreadable log is reported, never fatal: the caller is already
+        // on its own error path and must not lose that error to this one.
+        let missing = read_log_tail(&dir.join("does-not-exist.log"), 3);
+        assert!(
+            missing.contains("log unavailable"),
+            "a missing log must be reported as such, got: {missing}"
+        );
+
+        let empty = dir.join("empty.log");
+        std::fs::write(&empty, b"").expect("write empty log");
+        assert_eq!(read_log_tail(&empty, 3), "(log is empty)");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn touching_the_events_file_leaves_existing_content_alone() {
+        // Idryx refuses to start unless the file exists. Truncating it instead
+        // would silently drop the history an operator is about to look at.
+        let dir = scratch("touch");
+        let path = dir.join("never").join("created").join("tokenfuse.ndjson");
+
+        touch_file(&path).expect("touch a file whose directory does not exist");
+        assert!(path.is_file(), "touch must create parent directories");
+
+        std::fs::write(&path, b"{\"ts\":\"2026-08-20T00:00:00Z\"}\n").expect("write an event");
+        touch_file(&path).expect("touch again");
+
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read events"),
+            "{\"ts\":\"2026-08-20T00:00:00Z\"}\n",
+            "touching an existing events file must not truncate it"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

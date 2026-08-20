@@ -47,6 +47,7 @@ cargo clippy --all-targets
 cargo test --all
 ./scripts/no-panic.sh
 ./scripts/no-process-scanning.sh
+./scripts/scenarios-have-tests.sh # invariant 8
 ./scripts/gates-have-teeth.sh     # invariant 7; needs a clean tree
 ```
 
@@ -88,7 +89,15 @@ an absent invariant.
    why. *(not enforced)*
 4. **The descriptor is a cross-repo contract.** Genaryx auto-discovers it. A
    field rename or a path change is a coordinated change with that repo, and
-   its failure mode is silence, not an error. *(not enforced)*
+   its failure mode is silence, not an error.
+   *(test: `the_descriptor_carries_exactly_the_documented_field_names` pins
+   every documented key by name; `an_absent_optional_service_leaves_no_null_behind`
+   pins the difference between absent and null, which a consumer checking for
+   presence reads differently;
+   `a_service_that_failed_is_named_in_unavailable_with_a_reason` and
+   `an_environment_with_nothing_unavailable_omits_the_section` pin the degraded
+   case. These hold the SHAPE. They cannot tell you Genaryx still reads that
+   shape, which stays a coordinated change with that repo.)*
 5. **`up` is idempotent and `down` is complete.** Running `up` twice must not
    start a second copy or corrupt the pidfile, and `down` must leave nothing
    holding a port. The second run is the real test: works twice, from empty,
@@ -108,8 +117,10 @@ an absent invariant.
    directory prints nothing and an rglob over one yields nothing, so both exited 0
    and printed that the code was clean having read none of it. Renaming or moving
    the crate is ordinary housekeeping.
-   *(gate: `scripts/gates-have-teeth.sh`, 7 cases: three planted faults, two
-   non-faults that must NOT fire, and both subjects taken away. The non-faults are
+   *(gate: `scripts/gates-have-teeth.sh`, 12 cases: five planted faults, two
+   non-faults that must NOT fire, and both subjects of both source-reading
+   gates taken away. The count was 7 until 2026-08-20, when invariant 8's gate
+   brought five more. The non-faults are
    the ones worth keeping: `libc::kill` inside `procutil.rs` is exactly where
    invariant 2 puts it, and an `unwrap` inside a `#[cfg(test)]` module is allowed
    by invariant 1. A gate that flagged either would be switched off, and the real
@@ -120,6 +131,19 @@ an absent invariant.
    every push with uncommitted work in the tree, which is how a hook becomes
    something people disable. The skip prints why.
 
+8. **Every scenario in `features/` is held by a test that exists.** The
+   scenarios are there so the promises in README.md can be checked without
+   reading Rust, and that only holds while something runs them. The drift that
+   breaks it is not a deleted scenario, it is a RENAMED test: the rename is
+   ordinary housekeeping, the scenario goes on reading like a specification,
+   and nothing executes it. Only that direction is checked. A unit test with no
+   scenario is ordinary and allowed, because not every assertion is a promise
+   to an operator, and a gate demanding one scenario per test would get
+   scenarios deleted to keep it quiet.
+   *(gate: `scripts/scenarios-have-tests.sh`, with 5 cases in
+   `gates-have-teeth.sh`: a tag naming a renamed test, a scenario with no tag,
+   the allowed unbound unit test, and both subjects taken away.)*
+
 6. **No Docker.** That is the entire reason this exists next to `stack-single`.
    A dependency that needs a container runtime defeats the point.
    *(not enforced)*
@@ -128,8 +152,11 @@ an absent invariant.
 
 This list is debt, and it is here to stay visible rather than to be tidy.
 
-**Held by this file alone: invariants 3, 4 and 6.** Invariant 5 is half
-held.
+**Held by this file alone: invariants 3 and 6.** Invariant 5 is half held.
+Invariant 4 moved out of this list on 2026-08-20: its shape is now pinned by
+tests in `src/descriptor.rs`. What no test in this repository can hold is
+whether Genaryx still reads that shape, which is why a change there is still a
+coordinated change with that repo rather than a local one.
 
 - **Invariant 2** is now `scripts/no-process-scanning.sh`. It checks the SOURCE
   rather than a running binary, because the point is to refuse the edit. The way
