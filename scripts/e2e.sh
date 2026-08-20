@@ -12,7 +12,8 @@
 # WHAT IT NEEDS
 #
 # The tokenfuse sibling checkout, and either cached binaries in ~/.taipan/bin
-# or the patience for a release build of that workspace. Nothing else: the
+# or the patience for a release build of that workspace. Since the --with test,
+# also the wardryx and Idryx checkouts, which are Go and build in seconds. Nothing else: the
 # gateway runs on its built-in stub unless --upstream is passed, and this
 # never passes one, so no network call leaves the machine.
 #
@@ -26,7 +27,11 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
-ports=(4100 8080)
+# All four, since the --with test arrived: the money plane on 4100/8080 plus
+# Wardryx on 8090 and Idryx on 8081. The list checked here was 4100 and 8080
+# only for one commit, which would have let this start on top of an environment
+# holding the other two.
+ports=(4100 8080 8090 8081)
 busy=()
 for p in "${ports[@]}"; do
 	if nc -z 127.0.0.1 "$p" 2>/dev/null; then

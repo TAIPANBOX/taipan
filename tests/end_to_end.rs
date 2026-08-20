@@ -259,3 +259,145 @@ fn a_stale_pidfile_does_not_block_a_fresh_up() {
         "the test must leave nothing running"
     );
 }
+
+const WARDRYX_PORT: u16 = 8090;
+const IDRYX_PORT: u16 = 8081;
+
+/// The `--with` half, which CLAUDE.md named as the uncovered path and which is
+/// the one an operator uses to see anything decide.
+///
+/// Without it `taipan up` brings up the money plane and nothing governs it.
+/// With it, Wardryx is seeded with a policy and the gateway is wired to consult
+/// it, and Idryx is remapped off Cloud's port. Three services' worth of build,
+/// start and descriptor code had no test at all: `services/idryx.rs` was at 0%
+/// and `services/wardryx.rs` at 44%.
+///
+/// Same rule as the test above: nothing asserts until `down` has run.
+#[test]
+#[ignore = "starts four services and binds 4100/8080/8090/8081; run via scripts/e2e.sh"]
+fn the_optional_planes_come_up_are_described_and_go_down_with_the_rest() {
+    let name = format!("e2e-with-{}", std::process::id());
+
+    for p in [GATEWAY_PORT, CLOUD_PORT, WARDRYX_PORT, IDRYX_PORT] {
+        assert!(port_is_free(p), "port {p} must be free before this starts");
+    }
+
+    // --- observations first ------------------------------------------------
+    let up = taipan(&[
+        "up",
+        "--name",
+        &name,
+        "--with",
+        "wardryx,idryx",
+        "--healthz-timeout-secs",
+        "90",
+    ]);
+    let answered: Vec<(u16, bool)> = [GATEWAY_PORT, CLOUD_PORT, WARDRYX_PORT, IDRYX_PORT]
+        .iter()
+        .map(|&p| (p, port_answers(p)))
+        .collect();
+
+    let descriptor = std::fs::read_to_string(env_file(&name, ".json")).ok();
+    let policy_seeded = env_file(&name, ".wardryx-policy.yaml").is_file();
+    let policy_body = std::fs::read_to_string(env_file(&name, ".wardryx-policy.yaml")).ok();
+
+    // `taipan demo` seeds a synthetic event stream, which is what an operator
+    // runs before any real traffic exists. It was at 0%.
+    let demo = taipan(&["demo", "--name", &name]);
+    let demo_events = taipan_home().join("events").join("demo.ndjson");
+    let demo_wrote = std::fs::metadata(&demo_events)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let down = taipan(&["down", "--name", &name]);
+    let free_after: Vec<(u16, bool)> = [GATEWAY_PORT, CLOUD_PORT, WARDRYX_PORT, IDRYX_PORT]
+        .iter()
+        .map(|&p| (p, port_is_free(p)))
+        .collect();
+
+    // --- verdict ------------------------------------------------------------
+    let text = |o: &Output| {
+        format!(
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        )
+    };
+
+    assert!(
+        up.status.success(),
+        "`up --with wardryx,idryx` must succeed.\n{}",
+        text(&up)
+    );
+    for (port, ok) in &answered {
+        assert!(
+            *ok,
+            "port {port} must answer after `up --with`.\n{}",
+            text(&up)
+        );
+    }
+
+    let descriptor = descriptor.expect("`up` must write a descriptor");
+    for service in ["gateway", "cloud", "wardryx", "idryx"] {
+        assert!(
+            descriptor.contains(&format!("\"{service}\"")),
+            "the descriptor is what the console auto-discovers, and it must name \
+             {service}: {descriptor}"
+        );
+    }
+    // Idryx's own default is 8080, which is Cloud's. The remap is the whole
+    // reason it can run beside Cloud at all, and a descriptor carrying the
+    // wrong port sends a console to the wrong service rather than to nothing.
+    assert!(
+        descriptor.contains(&format!("127.0.0.1:{IDRYX_PORT}")),
+        "the descriptor must carry Idryx's remapped port: {descriptor}"
+    );
+
+    assert!(policy_seeded, "`--with wardryx` must seed the demo policy");
+    let policy = policy_body.expect("read the seeded policy");
+    // EVERY rule, not "the string appears somewhere". A mutation pass on
+    // 2026-08-20 widened one rule of two and this assertion still passed,
+    // because the other rule still carried the scoped target. A policy with one
+    // widened rule governs an operator's real agents just as thoroughly as one
+    // with both widened.
+    let targets: Vec<&str> = policy
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("target:"))
+        .map(|v| v.trim().trim_matches('"'))
+        .collect();
+    assert!(
+        !targets.is_empty(),
+        "the seeded policy declares no target at all: {policy}"
+    );
+    for t in &targets {
+        assert_eq!(
+            *t, "agent://mockryx.local/*",
+            "every rule must stay scoped to the rehearsal identities, so the seeded \
+             policy never governs an operator's own agents. Found {t:?} in: {policy}"
+        );
+    }
+
+    assert!(
+        demo.status.success(),
+        "`taipan demo` must succeed against a running environment.\n{}",
+        text(&demo)
+    );
+    assert!(
+        demo_wrote > 0,
+        "`taipan demo` must actually write events to {}",
+        demo_events.display()
+    );
+
+    assert!(
+        down.status.success(),
+        "`down` must stop all four.\n{}",
+        text(&down)
+    );
+    for (port, free) in &free_after {
+        assert!(
+            *free,
+            "nothing may hold {port} after `down`.\n{}",
+            text(&down)
+        );
+    }
+}
