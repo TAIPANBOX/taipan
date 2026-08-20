@@ -224,6 +224,45 @@ s = open(p).read()
 open(p, "w").write(s + "\n  Scenario: A promise nobody bound to a test\n    Given nothing holds this\n")')" \
 	"no @test: tag"
 
+# invariant 3: the direct set is what the invariant names. The realistic
+# failure is not somebody sneaking a crate in, it is the document and the code
+# drifting apart, which is why the allow-list is read out of CLAUDE.md.
+run_case "declared-deps: a crate the invariant does not name" fail \
+	'./scripts/declared-deps.sh' \
+	"$(py 'edit("Cargo.toml", "[profile.release]", "# teeth: an undeclared crate.\nonce_cell = \"1\"\n\n[profile.release]")')" \
+	"invariant 3 does not name it"
+
+run_case "declared-deps: a named crate that Cargo.toml no longer declares" fail \
+	'./scripts/declared-deps.sh' \
+	"$(py 'edit("CLAUDE.md", "`libc`, `chrono`. Each is", "`libc`, `chrono`, `regex`. Each is")')" \
+	"no longer declares it"
+
+# The comment half holds one property and not the wider one it reads like.
+# Deleting a comment in the MIDDLE merges its crates into the group above and
+# is not caught, because a comment governs the run beneath it. What is caught
+# is a crate sitting above every comment in the section. This case was written
+# against the middle first, and this harness reported it TOOTHLESS, which is
+# how the claim came to be narrowed instead of the check being trusted.
+run_case "declared-deps: a crate above every comment in the section" fail \
+	'./scripts/declared-deps.sh' \
+	"$(py 'edit("Cargo.toml", "[dependencies]\n# CLI parsing.\n", "[dependencies]\nonce_cell = \"1\"\n# CLI parsing.\n")')" \
+	"no comment above it"
+
+# invariant 6: the promise is that no container runtime is needed. A single
+# fallback that shells out to one fails only on the machine with no Docker,
+# which is the machine this repo exists for.
+run_case "no-docker: shelling out to a container runtime" fail \
+	'./scripts/no-docker.sh' \
+	"$(py 'p = "src/cli.rs"
+s = open(p).read()
+open(p, "w").write(s + "\n#[allow(dead_code)]\nfn _teeth_docker() { let _ = std::process::Command::new(\"docker\"); }\n")')" \
+	"invokes a container runtime"
+
+run_case "no-docker: a Dockerfile appears in the tree" fail \
+	'./scripts/no-docker.sh' \
+	"$(py 'open("Dockerfile", "w").write("FROM scratch\n")')" \
+	"a container file"
+
 echo
 echo "=== and what they must NOT catch ==="
 
@@ -253,6 +292,21 @@ run_case "scenarios-have-tests: a unit test with no scenario, which is allowed" 
 s = open(p).read()
 open(p, "w").write(s + "\n#[cfg(test)]\nmod teeth_unbound {\n    #[test]\n    fn an_assertion_that_is_not_a_promise() { assert_eq!(1 + 1, 2); }\n}\n")')"
 
+# One comment covers a pair when the pair is one decision. The first version of
+# this gate reset after every line and accused serde_json and
+# tracing-subscriber, which is correct code flagged as a fault.
+run_case "declared-deps: two crates under one comment, which is one decision" pass \
+	'./scripts/declared-deps.sh' \
+	"$(py 'edit("Cargo.toml", "serde_json = \"1\"", "serde_json = \"1.0\"")')"
+
+# The word Docker belongs in a comment that promises not to use one. A gate
+# failing on the sentence that states the invariant gets switched off.
+run_case "no-docker: a comment naming Docker to say we do not use it" pass \
+	'./scripts/no-docker.sh' \
+	"$(py 'p = "src/cli.rs"
+s = open(p).read()
+open(p, "w").write(s + "\n// No docker run here: invariant 6 is the reason this binary exists.\n")')"
+
 echo
 echo "=== and the one this estate learned the hard way ==="
 echo "    a gate whose subject is gone must SAY so, not report OK on nothing"
@@ -279,6 +333,23 @@ subprocess.run(["git", "mv", "features", "features-elsewhere"], check=True)')" \
 
 run_case "scenarios-have-tests: no Rust left under src/" fail \
 	'./scripts/scenarios-have-tests.sh' \
+	"$(py 'import subprocess
+subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)')" \
+	"measured nothing"
+
+run_case "declared-deps: no CLAUDE.md, so no allow-list at all" fail \
+	'./scripts/declared-deps.sh' \
+	"$(py 'import subprocess
+subprocess.run(["git", "mv", "CLAUDE.md", "CLAUDE-elsewhere.md"], check=True)')" \
+	"measured nothing"
+
+run_case "declared-deps: invariant 3 no longer says what it said" fail \
+	'./scripts/declared-deps.sh' \
+	"$(py 'edit("CLAUDE.md", "3. **Dependencies stay at the declared set**:", "3. **Dependencies are whatever they are**:")')" \
+	"measured nothing"
+
+run_case "no-docker: no Rust left under src/" fail \
+	'./scripts/no-docker.sh' \
 	"$(py 'import subprocess
 subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)')" \
 	"measured nothing"

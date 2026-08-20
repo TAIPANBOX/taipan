@@ -48,6 +48,8 @@ cargo test --all
 ./scripts/no-panic.sh
 ./scripts/no-process-scanning.sh
 ./scripts/scenarios-have-tests.sh # invariant 8
+./scripts/declared-deps.sh        # invariant 3
+./scripts/no-docker.sh            # invariant 6
 ./scripts/gates-have-teeth.sh     # invariant 7; needs a clean tree
 ```
 
@@ -84,9 +86,31 @@ an absent invariant.
    `libc::kill` to live in `procutil`, the module that owns every PID this
    program may touch)*
 3. **Dependencies stay at the declared set**: `clap`, `serde`, `serde_json`,
-   `anyhow`, `tracing`, `tracing-subscriber`, `libc`. Each is justified by a
-   comment in `Cargo.toml`; a new one needs the user, and a new comment saying
-   why. *(not enforced)*
+   `anyhow`, `tracing`, `tracing-subscriber`, `libc`, `chrono`. Each is
+   justified by a comment in `Cargo.toml`; a new one needs the user, and a new
+   comment saying why.
+
+   This sentence IS the allow-list. `scripts/declared-deps.sh` parses the
+   backticked names out of it and compares them with what `cargo metadata`
+   reports, so the document is the input rather than a parallel description of
+   the code, and the two cannot drift apart.
+
+   They had. Until 2026-08-20 this line named seven crates while `Cargo.toml`
+   declared eight: `chrono` has been here since the first commit (30560c7,
+   2026-07-17) with a proper justifying comment, and was never added to the
+   list. Nothing said so for a month, because the invariant was marked
+   `(not enforced)` and there was nothing to say it. That is the whole argument
+   for the marker discipline at the top of this section.
+   *(gate: `scripts/declared-deps.sh`, which checks both directions, a crate
+   the invariant does not name and a named crate that is gone, and also that
+   each has a comment above it. A comment governs the run of lines under it:
+   `serde`/`serde_json` and `tracing`/`tracing-subscriber` are one decision
+   each, and a gate that flagged the second of each pair would be switched off
+   with the real cases inside it. The comment half is therefore weaker than it
+   reads: it catches a crate sitting above EVERY comment in the section, and it
+   does NOT catch a comment deleted in the middle, which merely merges its
+   crates into the group above. `gates-have-teeth.sh` reported the wider case
+   TOOTHLESS, and the claim was narrowed rather than the check trusted.)*
 4. **The descriptor is a cross-repo contract.** Genaryx auto-discovers it. A
    field rename or a path change is a coordinated change with that repo, and
    its failure mode is silence, not an error.
@@ -117,10 +141,10 @@ an absent invariant.
    directory prints nothing and an rglob over one yields nothing, so both exited 0
    and printed that the code was clean having read none of it. Renaming or moving
    the crate is ordinary housekeeping.
-   *(gate: `scripts/gates-have-teeth.sh`, 12 cases: five planted faults, two
-   non-faults that must NOT fire, and both subjects of both source-reading
-   gates taken away. The count was 7 until 2026-08-20, when invariant 8's gate
-   brought five more. The non-faults are
+   *(gate: `scripts/gates-have-teeth.sh`, 22 cases: ten planted faults, five
+   non-faults that must NOT fire, and seven subjects taken away. The count went
+   7 to 12 to 22 on 2026-08-20 as invariants 8, 3 and 6 each arrived with a
+   gate. The non-faults are
    the ones worth keeping: `libc::kill` inside `procutil.rs` is exactly where
    invariant 2 puts it, and an `unwrap` inside a `#[cfg(test)]` module is allowed
    by invariant 1. A gate that flagged either would be switched off, and the real
@@ -145,14 +169,24 @@ an absent invariant.
    the allowed unbound unit test, and both subjects taken away.)*
 
 6. **No Docker.** That is the entire reason this exists next to `stack-single`.
-   A dependency that needs a container runtime defeats the point.
-   *(not enforced)*
+   A dependency that needs a container runtime defeats the point, and so does a
+   single `Command::new("docker")` on a fallback path: it fails only on the
+   machine that has no Docker, which is exactly the machine this repo is for,
+   so no test on a developer's laptop would ever catch it.
+   *(gate: `scripts/no-docker.sh`, which reads `src/` and the repository's file
+   names, never the prose. The word Docker belongs in README.md and in this
+   file, where it appears as a promise not to use one, and a gate that failed
+   on the sentence stating the invariant is a gate somebody switches off.
+   Container crates are not checked here: invariant 3's gate caps the direct
+   set, so one cannot arrive without failing that first.)*
 
 ## Decisions that have no gate yet
 
 This list is debt, and it is here to stay visible rather than to be tidy.
 
-**Held by this file alone: invariants 3 and 6.** Invariant 5 is half held.
+**Held by this file alone: nothing.** Invariant 5 is half held, and that half
+is the only debt left in this list. Invariants 3 and 6 left it on 2026-08-20,
+which is why the entries below now read as history rather than as a plan.
 Invariant 4 moved out of this list on 2026-08-20: its shape is now pinned by
 tests in `src/descriptor.rs`. What no test in this repository can hold is
 whether Genaryx still reads that shape, which is why a change there is still a
@@ -166,8 +200,29 @@ coordinated change with that repo rather than a local one.
   shared box. Verified by breaking twice: an `lsof` lookup, and a `libc::kill`
   outside `procutil`. The regression mode is
   somebody "fixing" a stubborn shutdown by looking up whatever holds the port.
-- **Invariant 3** is a dependency allow-list, the same shape as the one in
-  `mockryx`, perhaps thirty lines.
+- **Invariant 3** is now `scripts/declared-deps.sh`. It took the shape this
+  entry predicted, from `mockryx/scripts/deps-tight.sh`, with one change: the
+  allow-list is not IN the script. It is parsed out of invariant 3's own
+  sentence, so the document is the input rather than a second description of
+  the same decision.
+
+  That change came from what the first run found. The invariant named seven
+  crates and `Cargo.toml` declared eight; `chrono` had been there since the
+  first commit (30560c7, 2026-07-17) with a proper justifying comment, and the
+  list simply never grew. A script carrying its own copy of the list would have
+  passed happily while the document stayed wrong, which is the fault one level
+  up from the one this gate was asked for.
+
+  **And it was overeager before it was right.** Its first version reset the
+  comment tracker after every dependency line, so it flagged `serde_json` and
+  `tracing-subscriber`: both sit under a comment that covers the pair, because
+  each pair is one decision. Correct code, accused. That is the shape this
+  estate deletes gates for, and the real cases go with them, so a comment now
+  governs the run of lines beneath it.
+- **Invariant 6** is now `scripts/no-docker.sh`. It reads `src/` and the
+  repository's file names and never the prose, because the word Docker
+  legitimately appears in README.md, in this file and in the crate description,
+  every time as a promise not to use one.
 - **Invariant 5**'s signalling half is now three tests against real process
   groups: a stopped group is actually gone, stopping twice is a no-op rather
   than an error, and a group that ignores SIGTERM is escalated to SIGKILL and
