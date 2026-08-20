@@ -69,6 +69,11 @@ taipan up --name demo --with wardryx,idryx
 # Point at sibling checkouts that live somewhere other than . or ..
 taipan up --name demo --workspace ~/Development
 
+# Forward to a real provider. Without this the gateway runs on its built-in
+# stub and the spend it reports is invented; `up` says so in its summary
+# every time. See "Upstream, or the stub" below.
+taipan up --name demo --upstream https://api.anthropic.com/v1/messages
+
 # Dev mode: Cloud runs on the devkey fallback instead of minted keys, so an
 # auto-discovering console can pair without hitting the minted-key pairing
 # skew (see "Keys" below). Not for production.
@@ -137,6 +142,34 @@ gracefully rather than failing the whole environment over an optional piece,
 and never omits a failure silently. `unavailable` and `logs_dir` are additive
 beyond the documented shape; unknown fields are meant to be tolerated, the
 same convention the agent-event envelope itself uses.
+
+## Upstream, or the stub
+
+The gateway forwards to a real provider endpoint, or it answers from a built-in
+stub. There is no third option, and it refuses to start if it is told neither.
+
+`--upstream <url>` sets `TOKENFUSE_UPSTREAM` to the FULL endpoint, e.g.
+`https://api.anthropic.com/v1/messages`. Without it, `taipan up` sets
+`TOKENFUSE_ALLOW_STUB=1` and prints this in its summary:
+
+```
+  !  NO UPSTREAM: the gateway is answering from its built-in stub.
+     Every call is metered at a fixed 1000 input / 500 output tokens,
+     so the spend shown here and in any console reading this
+     environment is INVENTED, not measured.
+     Pass --upstream <full provider endpoint> for real traffic.
+```
+
+That warning is in the summary rather than in a log line because the numbers
+travel. The descriptor `up` writes is what the Genaryx console auto-discovers,
+and a person reads the spend there as money.
+
+taipan set neither variable between 2026-07-25, when tokenfuse made its stub
+opt-in rather than the default, and 2026-08-20. For those four weeks
+`taipan up` did not work at all: the gateway refused to start and `up` rolled
+back cleanly, every time, on any machine that tried. Nothing in this repository
+said so, because nothing in it had ever run `up`. It does now, see
+`scripts/e2e.sh`.
 
 ## Keys
 

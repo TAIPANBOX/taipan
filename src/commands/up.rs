@@ -194,6 +194,7 @@ pub fn run(args: UpArgs) -> Result<()> {
         wardryx_wiring
             .as_ref()
             .map(|w| (w.url.as_str(), w.viewer.token.as_str())),
+        args.upstream.as_deref(),
         &gateway_log,
         healthz_timeout,
     ) {
@@ -316,7 +317,7 @@ pub fn run(args: UpArgs) -> Result<()> {
         return Err(e.context("write descriptor"));
     }
 
-    print_summary(&args.name, &descriptor, &home);
+    print_summary(&args.name, &descriptor, &home, args.upstream.as_deref());
     Ok(())
 }
 
@@ -402,7 +403,7 @@ fn rollback(started: &[Spawned]) {
     }
 }
 
-fn print_summary(name: &str, descriptor: &Descriptor, home: &TaipanHome) {
+fn print_summary(name: &str, descriptor: &Descriptor, home: &TaipanHome, upstream: Option<&str>) {
     println!();
     println!("taipan: environment '{name}' is up");
     for (svc, entry) in &descriptor.services {
@@ -421,6 +422,21 @@ fn print_summary(name: &str, descriptor: &Descriptor, home: &TaipanHome) {
     println!("  descriptor   {}", home.descriptor_path(name).display());
     println!("  pidfile      {}", home.pidfile_path(name).display());
     println!("  keyfile      {}", home.keyfile_path(name).display());
+    // Said here, in the summary, and not only in a log line. The gateway is
+    // answering from a built-in stub and metering a fixed 1000 input / 500
+    // output tokens per call as spend. Those numbers travel: the descriptor
+    // this command just wrote is what the Genaryx console auto-discovers, and
+    // a person reads them there as money. An unlabelled stub is the exact
+    // thing tokenfuse refused to start over.
+    if upstream.is_none() {
+        println!();
+        println!("  !  NO UPSTREAM: the gateway is answering from its built-in stub.");
+        println!("     Every call is metered at a fixed 1000 input / 500 output tokens,");
+        println!("     so the spend shown here and in any console reading this");
+        println!("     environment is INVENTED, not measured.");
+        println!("     Pass --upstream <full provider endpoint> for real traffic.");
+    }
+
     println!();
     println!("stop with: taipan down --name {name}");
 }

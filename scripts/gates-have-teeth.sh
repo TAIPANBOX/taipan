@@ -331,10 +331,15 @@ run_case "scenarios-have-tests: no feature file left" fail \
 subprocess.run(["git", "mv", "features", "features-elsewhere"], check=True)')" \
 	"measured nothing"
 
-run_case "scenarios-have-tests: no Rust left under src/" fail \
+# BOTH homes, since 2026-08-20. The gate reads src/ and tests/, so moving one
+# away leaves it reading the other and the "measured nothing" path is never
+# reached. This case moved only src/ until the integration tests arrived, and
+# would have quietly stopped testing what it names.
+run_case "scenarios-have-tests: no Rust left under src/ or tests/" fail \
 	'./scripts/scenarios-have-tests.sh' \
 	"$(py 'import subprocess
-subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)')" \
+subprocess.run(["git", "mv", "src", "src-elsewhere"], check=True)
+subprocess.run(["git", "mv", "tests", "tests-elsewhere"], check=True)')" \
 	"measured nothing"
 
 run_case "declared-deps: no CLAUDE.md, so no allow-list at all" fail \

@@ -27,21 +27,20 @@ const HEALTH_PATH: &str = "/healthz";
 /// just because it missed a timeout tuned for the production hot path.
 const WARDRYX_CALL_TIMEOUT_MS: &str = "2000";
 
-#[allow(clippy::too_many_arguments)]
-pub fn start(
-    bin: &Path,
+/// Every environment variable the gateway's child process is started with,
+/// split out of `start` for the same reason `cloud::build_envs` is: `start` is
+/// otherwise all I/O (spawn, healthz poll), and the upstream-or-stub decision
+/// below needs a seam that can be tested without spawning anything.
+fn build_envs(
+    addr: &str,
     mode: &str,
     events_path: &Path,
     data_dir: &Path,
     wardryx: Option<(&str, &str)>,
-    log_path: &Path,
-    healthz_timeout: Duration,
-) -> Result<StartedService> {
-    std::fs::create_dir_all(data_dir).with_context(|| format!("create {}", data_dir.display()))?;
-
-    let addr = format!("127.0.0.1:{PORT}");
+    upstream: Option<&str>,
+) -> Vec<(String, String)> {
     let mut envs = vec![
-        ("TOKENFUSE_ADDR".to_string(), addr.clone()),
+        ("TOKENFUSE_ADDR".to_string(), addr.to_string()),
         ("TOKENFUSE_MODE".to_string(), mode.to_string()),
         (
             "TOKENFUSE_EVENTS_PATH".to_string(),
@@ -52,6 +51,22 @@ pub fn start(
             data_dir.display().to_string(),
         ),
     ];
+    // The gateway refuses to start with neither of these set, and it is right
+    // to: without an upstream it answers from a built-in stub and meters a
+    // fixed 1000 input / 500 output tokens as real spend, so both the answers
+    // and the money would be invented. tokenfuse made the stub opt-IN on
+    // 2026-07-25 (4b4b3fd, "gateway: refuse to start rather than invent
+    // usage") and taipan set neither variable, so `taipan up` had been broken
+    // against its own gateway for four weeks. Nothing said so, because no test
+    // in this repository had ever run `up`.
+    match upstream {
+        Some(url) => envs.push(("TOKENFUSE_UPSTREAM".to_string(), url.to_string())),
+        // The caller prints this in the summary an operator actually reads.
+        // Setting it silently is the failure the tokenfuse commit above was
+        // written about, one repository along.
+        None => envs.push(("TOKENFUSE_ALLOW_STUB".to_string(), "1".to_string())),
+    }
+
     // `wardryx` is `(base_url, bearer_key)`, pre-minted by `commands::up`
     // before either process starts (see that module's `WardryxWiring`).
     // `enforce` (not `shadow`) so a deny/hold actually short-circuits the
@@ -71,6 +86,24 @@ pub fn start(
         ));
     }
 
+    envs
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn start(
+    bin: &Path,
+    mode: &str,
+    events_path: &Path,
+    data_dir: &Path,
+    wardryx: Option<(&str, &str)>,
+    upstream: Option<&str>,
+    log_path: &Path,
+    healthz_timeout: Duration,
+) -> Result<StartedService> {
+    std::fs::create_dir_all(data_dir).with_context(|| format!("create {}", data_dir.display()))?;
+
+    let addr = format!("127.0.0.1:{PORT}");
+    let envs = build_envs(&addr, mode, events_path, data_dir, wardryx, upstream);
     let spawned =
         procutil::spawn_process("gateway", bin, &[], &envs, None, log_path, StopSignal::Int)?;
     tracing::info!(service = "gateway", pid = spawned.pid, addr = %addr, mode, "spawned, waiting for /healthz");
@@ -92,4 +125,92 @@ pub fn start(
             mode: Some(mode.to_string()),
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn envs_for(upstream: Option<&str>) -> Vec<(String, String)> {
+        build_envs(
+            "127.0.0.1:4100",
+            "enforce",
+            Path::new("/tmp/events.ndjson"),
+            Path::new("/tmp/traces"),
+            None,
+            upstream,
+        )
+    }
+
+    fn value<'a>(envs: &'a [(String, String)], key: &str) -> Option<&'a str> {
+        envs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn the_gateway_never_starts_without_being_told_which_it_is() {
+        // tokenfuse refuses to start with neither set, because a stub metering
+        // a fixed 1000 input / 500 output tokens as real spend invents both
+        // the answers and the money. taipan set neither from 2026-07-25 until
+        // 2026-08-20, so `up` did not work at all and nothing said so.
+        let stub = envs_for(None);
+        assert_eq!(
+            value(&stub, "TOKENFUSE_ALLOW_STUB"),
+            Some("1"),
+            "without --upstream the stub must be enabled EXPLICITLY, got {stub:?}"
+        );
+        assert_eq!(
+            value(&stub, "TOKENFUSE_UPSTREAM"),
+            None,
+            "and no upstream may be invented for it"
+        );
+
+        let real = envs_for(Some("https://api.anthropic.com/v1/messages"));
+        assert_eq!(
+            value(&real, "TOKENFUSE_UPSTREAM"),
+            Some("https://api.anthropic.com/v1/messages"),
+            "--upstream must be passed through verbatim, got {real:?}"
+        );
+        assert_eq!(
+            value(&real, "TOKENFUSE_ALLOW_STUB"),
+            None,
+            "and the stub must NOT also be enabled: a gateway with a real \
+             upstream that can still fall back to invented usage is the exact \
+             thing tokenfuse closed"
+        );
+    }
+
+    #[test]
+    fn wardryx_wiring_is_absent_unless_it_was_asked_for() {
+        // `None` must leave all four TOKENFUSE_WARDRYX_* unset, which is what
+        // keeps `Wardryx::from_env` a true no-op rather than a half-configured
+        // policy client pointing nowhere.
+        let off = envs_for(None);
+        for k in [
+            "TOKENFUSE_WARDRYX_MODE",
+            "TOKENFUSE_WARDRYX_URL",
+            "TOKENFUSE_WARDRYX_KEY",
+            "TOKENFUSE_WARDRYX_TIMEOUT_MS",
+        ] {
+            assert_eq!(
+                value(&off, k),
+                None,
+                "{k} must be unset without --with wardryx"
+            );
+        }
+
+        let on = build_envs(
+            "127.0.0.1:4100",
+            "enforce",
+            Path::new("/tmp/events.ndjson"),
+            Path::new("/tmp/traces"),
+            Some(("http://127.0.0.1:8090", "key:org:viewer")),
+            None,
+        );
+        assert_eq!(value(&on, "TOKENFUSE_WARDRYX_MODE"), Some("enforce"));
+        assert_eq!(
+            value(&on, "TOKENFUSE_WARDRYX_URL"),
+            Some("http://127.0.0.1:8090")
+        );
+        assert_eq!(value(&on, "TOKENFUSE_WARDRYX_KEY"), Some("key:org:viewer"));
+    }
 }
