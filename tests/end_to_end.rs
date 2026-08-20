@@ -355,11 +355,27 @@ fn the_optional_planes_come_up_are_described_and_go_down_with_the_rest() {
 
     assert!(policy_seeded, "`--with wardryx` must seed the demo policy");
     let policy = policy_body.expect("read the seeded policy");
+    // EVERY rule, not "the string appears somewhere". A mutation pass on
+    // 2026-08-20 widened one rule of two and this assertion still passed,
+    // because the other rule still carried the scoped target. A policy with one
+    // widened rule governs an operator's real agents just as thoroughly as one
+    // with both widened.
+    let targets: Vec<&str> = policy
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("target:"))
+        .map(|v| v.trim().trim_matches('"'))
+        .collect();
     assert!(
-        policy.contains("agent://mockryx.local/*"),
-        "the seeded policy must stay scoped to the rehearsal identities, so it \
-         never governs an operator's own agents: {policy}"
+        !targets.is_empty(),
+        "the seeded policy declares no target at all: {policy}"
     );
+    for t in &targets {
+        assert_eq!(
+            *t, "agent://mockryx.local/*",
+            "every rule must stay scoped to the rehearsal identities, so the seeded \
+             policy never governs an operator's own agents. Found {t:?} in: {policy}"
+        );
+    }
 
     assert!(
         demo.status.success(),
