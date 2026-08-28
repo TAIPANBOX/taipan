@@ -1,0 +1,84 @@
+{
+  "$comment": [
+    "What this repository contributes to a running stack, and what a check may",
+    "believe about it. `checked` is proved against this repository by",
+    "tests/manifest.rs. `declared` is a statement",
+    "",
+    "AND THIS REPOSITORY HAS NO CI, WHICH IS THE ONE PLACE THIS DESIGN LEANS ON.",
+    "Every sibling manifest says its `checked` bucket is proved in the repository's",
+    "own CI, because that is the argument for putting the proof here rather than in",
+    "estate-gates. There are no workflows here at all, so the test above runs when",
+    "somebody runs `cargo test` and at no other time.",
+    "Measured 2026-08-28 across the twelve repositories carrying a manifest: ten",
+    "have CI and two do not, this one and costcrew. costcrew is PUBLIC, where",
+    "Actions cost nothing; this one is PRIVATE, where they are metered from the",
+    "first minute. So adding CI here is a spending decision and not a tidying-up,",
+    "and it is not made in this commit.",
+    "nobody can verify and carries its own `why`.",
+    "",
+    "THIS ONE IS NOT INSTALLED, IT INSTALLS. estate.json gives it `runs: []` and",
+    "that is correct: nothing deploys taipan, a person runs it. It is the fourth",
+    "of the estate's four launcher shapes, beside stack-up, stack-single and",
+    "stack-k8s.",
+    "",
+    "SO THE FACT WORTH DECLARING IS WHAT IT INSTALLS, AND NOTHING ELSE IN THE",
+    "ESTATE CAN SAY IT. Every other manifest answers \"what does this repository",
+    "build\". This one answers \"what does this launcher bring up\", which is the",
+    "other half of the question C5 asks, and it is checked against src/services/,",
+    "the modules that do the bringing up.",
+    "",
+    "AND C5 DOES NOT COMPARE IT. Its DEPLOYMENTS list is stack-up, stack-single",
+    "and stack-k8s, measured 2026-08-28, so there are four ways to install this",
+    "estate and three of them are held to parity. That is not a defect in C5: a",
+    "CLI that brings up four services on one laptop is not the same claim as a",
+    "deployment that installs the whole product, and folding it in would produce a",
+    "wave of divergences that are all the right answer. It is written here so the",
+    "gap is a decision somebody can disagree with rather than an absence nobody",
+    "noticed.",
+    "",
+    "IT READS NO ENVIRONMENT VARIABLE OF ITS OWN. There is no TAIPAN_ name in any",
+    "source file, and the claim is checked the way qryx's is: the reader is proved",
+    "against a planted name first, so `found none` and `cannot find any` are not",
+    "the same result."
+  ],
+  "schema": "taipanbox.dev/components/v1",
+  "repo": "TAIPANBOX/taipan",
+  "components": [
+    {
+      "name": "taipan",
+      "class": "tool",
+      "checked": {
+        "binary": "taipan",
+        "crate": "taipan",
+        "workspace": ".",
+        "subcommands": [
+          "up",
+          "down",
+          "demo"
+        ],
+        "env": {},
+        "reads_no_environment": true,
+        "installs": [
+          "tokenfuse-gateway",
+          "tokenfuse-cloud",
+          "wardryx",
+          "idryx"
+        ]
+      },
+      "declared": {
+        "it_is_a_launcher_and_is_not_installed": {
+          "value": "runs: []",
+          "why": "Nothing deploys taipan; a person runs it. estate.json's empty `runs` is right, and this is the entry that says why it is right rather than leaving an empty list to read as an oversight."
+        },
+        "c5_does_not_compare_it": {
+          "value": "stack-up, stack-single, stack-k8s",
+          "why": "C5's DEPLOYMENTS list, measured 2026-08-28. Four ways to install and three held to parity. Folding this one in would produce divergences that are all correct answers, so the gap is recorded rather than closed on my own judgement."
+        },
+        "the_two_optional_planes": {
+          "value": "taipan up --with wardryx --with idryx",
+          "why": "The money plane comes up by default; the policy and identity planes are opt-in through the `Extra` enum. `installs` lists all four because the question it answers is what this launcher CAN bring up, not what a default run does."
+        }
+      }
+    }
+  ]
+}
