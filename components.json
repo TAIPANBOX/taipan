@@ -49,6 +49,7 @@
   ],
   "schema": "taipanbox.dev/components/v1",
   "repo": "TAIPANBOX/taipan",
+  "distribution": "not distributed: no CI, no tag, no release; built from source with cargo build on the operator's own machine",
   "components": [
     {
       "name": "taipan",
