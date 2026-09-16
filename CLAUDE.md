@@ -203,6 +203,23 @@ an absent invariant.
    Container crates are not checked here: invariant 3's gate caps the direct
    set, so one cannot arrive without failing that first.)*
 
+9. **The keyfile is created at mode 0600, never written loose and chmod'ed
+   afterward, and a failed persist step removes every state file already
+   written, not just the pidfile.** The keyfile carries live Cloud/Wardryx
+   bearer tokens. Writing at the umask default and chmod-ing afterward leaves
+   a window where those tokens sit on disk at whatever the caller's umask
+   allowed, and leaves them there forever if the chmod call itself fails,
+   because `save` returns `Err` with the file already written. `up`'s
+   keyfile-failure branch used to remove only the pidfile on that error,
+   leaving the keyfile, at whatever permissions it ended up with, behind.
+   *(test: `keys::tests::save_never_lets_a_second_reader_observe_a_looser_mode`,
+   a sweep of 2000 tries racing a second reader's poll against the write, and
+   `keys::tests::save_leaves_the_file_at_mode_0600_under_a_permissive_umask`,
+   both in `src/keys.rs`; `commands::up::tests::remove_pidfile_and_keyfile_removes_both_when_present`
+   in `src/commands/up.rs`, the regression test for the keyfile-failure branch
+   having removed only the pidfile. `up::run` itself is not unit-testable at
+   this seam, see that test module's doc comment for why.)*
+
 ## Decisions that have no gate yet
 
 This list is debt, and it is here to stay visible rather than to be tidy.
