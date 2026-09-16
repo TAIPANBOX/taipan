@@ -64,21 +64,35 @@ impl KeyFile {
         }
     }
 
-    /// Write as pretty JSON, created at mode 0600 from the first byte.
+    /// Write as pretty JSON, created at mode 0600 from the first byte, over
+    /// an always-fresh inode.
     ///
     /// This file carries live Cloud/Wardryx bearer tokens, so there must be
-    /// no window where it exists at a looser mode. Writing at the umask
-    /// default and chmod-ing afterward (the previous approach) leaves such a
-    /// window open, and leaves the file at that loose mode forever if the
-    /// chmod call itself fails: `save` would return `Err`, but the tokens
-    /// would already be on disk, readable by anyone the umask allowed. Using
-    /// `OpenOptions` with an explicit `mode` asks the OS to apply the mode
-    /// atomically as part of creating the file, closing the window rather
-    /// than narrowing it afterward. The `set_permissions` call below stays as
-    /// belt and braces for the one case creation-mode cannot cover: an
-    /// existing file at that path from a previous run, whose mode a bare
-    /// `create(true)` does not change (the mode argument to `open(2)` only
-    /// applies when a new inode is actually created).
+    /// no window where it exists at a looser mode, and the path must never
+    /// be followed if something other than a plain file already sits there.
+    ///
+    /// An earlier version opened with `create(true).truncate(true)`, which
+    /// per open(2) reuses an existing inode and ignores the `mode` argument
+    /// for it (the mode only applies when a new inode is actually created):
+    /// an existing file from a previous run kept its old mode while the new
+    /// tokens were written into it, and only the trailing `set_permissions`
+    /// call narrowed it afterward, the same write-loose-then-chmod window
+    /// this module exists to close, just reachable through an existing file
+    /// rather than a fresh one (Fable review, finding 1). The same open call
+    /// also followed a symlink at the path like any ordinary path, writing
+    /// the tokens into whatever it pointed at (finding 2).
+    ///
+    /// So before creating, anything at the path that is a plain file (not a
+    /// symlink) is removed first, and creation itself uses `create_new`
+    /// (`O_CREAT | O_EXCL`), which always makes a brand new inode and never
+    /// opens through an existing directory entry. A symlink at the path is
+    /// deliberately left untouched: `create_new` then reports `AlreadyExists`
+    /// for it without following it, so a symlink is refused rather than
+    /// silently deleted or written through. The trailing `set_permissions`
+    /// call stays as belt and braces for the one thing creation-mode alone
+    /// cannot guarantee: a caller umask that masks bits out of 0600 itself
+    /// (an unusual umask, but `open(2)`'s mode argument is masked by it same
+    /// as any other creation).
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -86,12 +100,28 @@ impl KeyFile {
         }
         let body = serde_json::to_string_pretty(self).context("serialize keyfile")?;
 
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                // Leave it: `create_new` below reports AlreadyExists for a
+                // symlink without following it, which is the refusal we want.
+            }
+            Ok(_) => {
+                // A plain file (or other non-symlink entry) from a previous
+                // run: remove it so creation below always gets a fresh inode.
+                std::fs::remove_file(path)
+                    .with_context(|| format!("remove stale {}", path.display()))?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(e).with_context(|| format!("stat {}", path.display()));
+            }
+        }
+
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(path)
             .with_context(|| format!("create {} at mode 0600", path.display()))?;
@@ -110,9 +140,16 @@ impl KeyFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
+
+    /// `libc::umask` is process-global, and cargo test runs tests in parallel
+    /// by default. Any test that changes the process umask, even briefly,
+    /// must hold this for the whole change-save-restore span so it cannot
+    /// interleave with another such test and leave the process at umask 0
+    /// (Fable finding 6).
+    static UMASK_LOCK: Mutex<()> = Mutex::new(());
 
     /// The keyfile carries live Cloud/Wardryx bearer tokens (module doc
     /// comment above). `save` used to write the file at the umask default and
@@ -126,6 +163,7 @@ mod tests {
     /// three values.
     #[test]
     fn save_never_lets_a_second_reader_observe_a_looser_mode() {
+        let _umask_guard = UMASK_LOCK.lock().expect("umask lock poisoned");
         const ITERATIONS: usize = 2000;
 
         let dir = std::env::temp_dir().join(format!(
@@ -148,12 +186,20 @@ mod tests {
                 // catch the umask-default mode before the later chmod call
                 // narrows it; on create-with-mode there is nothing looser to
                 // catch because the file never exists at any other mode.
+                // Bounded (Fable finding 5): if `save` ever errors before the
+                // file is created (a failing `create_dir_all` or `serialize`),
+                // the file never appears and an unbounded loop here would
+                // hang the whole test suite rather than fail it.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
                 loop {
                     if let Ok(meta) = std::fs::metadata(&poll_path) {
                         let mode = meta.permissions().mode() & 0o777;
                         if mode != 0o600 {
                             seen.store(mode, Ordering::SeqCst);
                         }
+                        return;
+                    }
+                    if std::time::Instant::now() >= deadline {
                         return;
                     }
                 }
@@ -166,8 +212,13 @@ mod tests {
             let result = kf.save(&path);
             unsafe { libc::umask(old_umask) };
 
-            poller.join().expect("poller thread must not panic");
+            // Check the save result BEFORE joining the poller (Fable finding
+            // 5): the poller is now bounded above so this ordering no longer
+            // changes whether the test can hang, but checking the substantive
+            // failure first gives a clearer panic message than a stalled
+            // poller would, if `save` ever regresses to erroring here.
             result.expect("save must succeed on a fresh writable path");
+            poller.join().expect("poller thread must not panic");
             let _ = std::fs::remove_file(&path);
         }
 
@@ -189,6 +240,7 @@ mod tests {
     /// them, because only the sweep can see the window in between.
     #[test]
     fn save_leaves_the_file_at_mode_0600_under_a_permissive_umask() {
+        let _umask_guard = UMASK_LOCK.lock().expect("umask lock poisoned");
         let dir = std::env::temp_dir().join(format!(
             "taipan-keys-umask-{}-{}",
             std::process::id(),
@@ -209,6 +261,109 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600, "final mode must be 0600, got {mode:03o}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Fable finding 1: `save` used to open an EXISTING file with
+    /// `create(true).truncate(true)`, which per open(2) reuses the old inode
+    /// and ignores the `mode` argument (it only applies when a new inode is
+    /// actually created). The new tokens were then written into that reused
+    /// inode at its OLD mode, and only the trailing `set_permissions` call
+    /// narrowed it afterward, exactly the write-loose-then-chmod window this
+    /// module's docs say is closed. The final mode alone does not catch this
+    /// (the trailing chmod already made it 0600 on the old code too, race
+    /// window aside), so this test also asserts the inode changed, which only
+    /// happens if the stale file was actually replaced rather than reused.
+    ///
+    /// The hostile umask (masking every bit) exists so that if the trailing
+    /// `set_permissions` belt-and-braces were ever deleted, a freshly
+    /// created 0600-mode file would land at 0000 instead, catching that
+    /// mutant here rather than only in the fresh-path race sweep above (Fable
+    /// mutant M1 on this finding: "delete set_permissions").
+    #[test]
+    fn save_replaces_an_existing_file_rather_than_reusing_its_inode() {
+        let _umask_guard = UMASK_LOCK.lock().expect("umask lock poisoned");
+        let dir = std::env::temp_dir().join(format!(
+            "taipan-keys-existing-{}-{}",
+            std::process::id(),
+            random_hex(4).expect("random dir suffix")
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        let path = dir.join("env.keys.json");
+
+        std::fs::write(&path, b"stale from a previous run").expect("seed stale file");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("chmod seed file to 0644");
+        let original_inode = std::fs::metadata(&path).expect("stat seed file").ino();
+
+        let old_umask = unsafe { libc::umask(0o777) };
+        let kf = KeyFile::new("existing", BTreeMap::new());
+        let result = kf.save(&path);
+        unsafe { libc::umask(old_umask) };
+        result.expect("save must succeed over an existing file, not refuse it");
+
+        let meta = std::fs::metadata(&path).expect("keyfile must exist after save");
+        let mode = meta.permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "final mode must be 0600 even over a stale 0644 file, got {mode:03o}"
+        );
+        assert_ne!(
+            meta.ino(),
+            original_inode,
+            "save must not reuse the existing file's inode; it must replace it"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Fable finding 2: a symlink at the keyfile path used to be followed,
+    /// because `create(true)` without `O_EXCL` opens through a symlink like
+    /// an ordinary path. `save` would write the new tokens into whatever the
+    /// link pointed at, and on a dangling link would create the target file
+    /// in another directory entirely. `save` must refuse a symlink at the
+    /// path (`AlreadyExists`), never follow it.
+    #[test]
+    fn save_refuses_a_symlink_at_the_path_rather_than_following_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "taipan-keys-symlink-{}-{}",
+            std::process::id(),
+            random_hex(4).expect("random dir suffix")
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+
+        let target = dir.join("elsewhere.json");
+        let link = dir.join("env.keys.json");
+        std::fs::write(&target, b"do not touch").expect("seed symlink target");
+        std::os::unix::fs::symlink(&target, &link).expect("create symlink");
+
+        let kf = KeyFile::new("symlinked", BTreeMap::new());
+        let err = kf
+            .save(&link)
+            .expect_err("save must refuse a symlink at the path, not follow it");
+
+        let io_err = err
+            .downcast_ref::<std::io::Error>()
+            .expect("save's error must wrap an io::Error");
+        assert_eq!(
+            io_err.kind(),
+            std::io::ErrorKind::AlreadyExists,
+            "expected AlreadyExists refusing the symlink, got {io_err:?}"
+        );
+
+        let target_body = std::fs::read_to_string(&target).expect("read symlink target");
+        assert_eq!(
+            target_body, "do not touch",
+            "save must not have written through the symlink into its target"
+        );
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .expect("symlink must still be at the path")
+                .file_type()
+                .is_symlink(),
+            "save must leave the symlink itself in place, not delete it"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
