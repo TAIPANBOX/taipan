@@ -288,11 +288,13 @@ pub fn run(args: UpArgs) -> Result<()> {
         return Err(e.context("write pidfile"));
     }
 
+    let keyfile_path = home.keyfile_path(&args.name);
+    let descriptor_path = home.descriptor_path(&args.name);
     let keyfile = KeyFile::new(&args.name, secrets);
-    if let Err(e) = keyfile.save(&home.keyfile_path(&args.name)) {
+    if let Err(e) = keyfile.save(&keyfile_path) {
         tracing::error!(error = %e, "failed to write keyfile; rolling back everything started this run");
         rollback(&started);
-        let _ = std::fs::remove_file(&pidfile_path);
+        remove_pidfile_and_keyfile(&pidfile_path, &keyfile_path, &descriptor_path);
         return Err(e.context("write keyfile"));
     }
 
@@ -309,11 +311,10 @@ pub fn run(args: UpArgs) -> Result<()> {
         unavailable,
         logs_dir: Some(logs_dir.display().to_string()),
     };
-    if let Err(e) = descriptor.save(&home.descriptor_path(&args.name)) {
+    if let Err(e) = descriptor.save(&descriptor_path) {
         tracing::error!(error = %e, "failed to write descriptor; rolling back everything started this run");
         rollback(&started);
-        let _ = std::fs::remove_file(&pidfile_path);
-        let _ = std::fs::remove_file(home.keyfile_path(&args.name));
+        remove_pidfile_and_keyfile(&pidfile_path, &keyfile_path, &descriptor_path);
         return Err(e.context("write descriptor"));
     }
 
@@ -386,6 +387,34 @@ fn start_idryx(
     services::idryx::start(&bin, tokenfuse_events, &log_path, healthz_timeout)
 }
 
+/// Remove the pidfile, keyfile, and descriptor left behind when a later
+/// persist step fails partway through `run`: an environment taipan cannot
+/// fully account for must not leave state files on disk, at any
+/// permissions, once the command is reporting failure. Shared by the
+/// keyfile-failure and descriptor-failure branches so they cannot drift
+/// apart again, and mirrors what `down.rs` removes on a normal teardown.
+///
+/// The keyfile-failure branch used to remove only the pidfile and leave the
+/// keyfile (live Cloud/Wardryx bearer tokens) behind; that was fixed first.
+/// The descriptor-failure branch then still left the descriptor itself
+/// behind (Fable finding 3): `Descriptor::save` is `std::fs::write`, not an
+/// atomic replace, so a failure partway through (ENOSPC, say) can leave a
+/// truncated file at that path, which Genaryx auto-discovers as garbage
+/// rather than as an absent environment. Passing `descriptor_path` here even
+/// from the keyfile-failure branch, where no descriptor has been written
+/// yet, is harmless: removing a path that was never created is the ordinary
+/// NotFound case below, not an error. Best-effort throughout: the caller is
+/// already unwinding with the real error.
+fn remove_pidfile_and_keyfile(
+    pidfile_path: &std::path::Path,
+    keyfile_path: &std::path::Path,
+    descriptor_path: &std::path::Path,
+) {
+    let _ = std::fs::remove_file(pidfile_path);
+    let _ = std::fs::remove_file(keyfile_path);
+    let _ = std::fs::remove_file(descriptor_path);
+}
+
 fn rollback(started: &[Spawned]) {
     for sp in started.iter().rev() {
         match procutil::stop_group(sp.pid, sp.stop_signal, Duration::from_secs(10)) {
@@ -439,4 +468,83 @@ fn print_summary(name: &str, descriptor: &Descriptor, home: &TaipanHome, upstrea
 
     println!();
     println!("stop with: taipan down --name {name}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `run` itself is not unit-testable at the keyfile-failure seam: it
+    /// discovers a workspace, builds/spawns real sibling binaries, and waits
+    /// on real health checks, which is what `tests/end_to_end.rs` exercises
+    /// instead (real ports, `#[ignore]`d, run only via `scripts/e2e.sh`).
+    /// There is no injectable failure point to force `keyfile.save` to error
+    /// from a unit test without running the whole command. What IS
+    /// unit-testable is the cleanup both the keyfile-failure and the
+    /// descriptor-failure branches call: this is the regression test for the
+    /// keyfile-failure branch having removed only the pidfile and left the
+    /// keyfile, carrying live bearer tokens, behind.
+    #[test]
+    fn remove_pidfile_and_keyfile_removes_both_when_present() {
+        let dir = std::env::temp_dir().join(format!(
+            "taipan-up-cleanup-{}-{}",
+            std::process::id(),
+            crate::util::random_hex(4).expect("random dir suffix")
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        let pidfile_path = dir.join("env.pid.json");
+        let keyfile_path = dir.join("env.keys.json");
+        let descriptor_path = dir.join("env.json");
+        std::fs::write(&pidfile_path, b"{}").expect("write pidfile fixture");
+        std::fs::write(&keyfile_path, b"{}").expect("write keyfile fixture");
+        std::fs::write(&descriptor_path, b"{}").expect("write descriptor fixture");
+
+        remove_pidfile_and_keyfile(&pidfile_path, &keyfile_path, &descriptor_path);
+
+        assert!(!pidfile_path.exists(), "pidfile must be removed");
+        assert!(
+            !keyfile_path.exists(),
+            "keyfile must be removed too, not just the pidfile"
+        );
+        assert!(
+            !descriptor_path.exists(),
+            "descriptor must be removed too (Fable finding 3: a partial \
+             descriptor from a failed descriptor.save left behind is exactly \
+             the garbage Genaryx auto-discovers)"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The caller is already unwinding with the real error; cleanup must not
+    /// panic when there is nothing left to clean up (an earlier partial run,
+    /// or a keyfile save that failed before creating anything). Asserts the
+    /// no-op is genuine (nothing appears at any of the three paths), rather
+    /// than only proving the call does not panic (Fable finding 7).
+    #[test]
+    fn remove_pidfile_and_keyfile_is_a_no_op_when_neither_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "taipan-up-cleanup-noop-{}-{}",
+            std::process::id(),
+            crate::util::random_hex(4).expect("random dir suffix")
+        ));
+        let pidfile_path = dir.join("env.pid.json");
+        let keyfile_path = dir.join("env.keys.json");
+        let descriptor_path = dir.join("env.json");
+
+        remove_pidfile_and_keyfile(&pidfile_path, &keyfile_path, &descriptor_path);
+
+        assert!(
+            !pidfile_path.exists(),
+            "no-op must not have created a pidfile"
+        );
+        assert!(
+            !keyfile_path.exists(),
+            "no-op must not have created a keyfile"
+        );
+        assert!(
+            !descriptor_path.exists(),
+            "no-op must not have created a descriptor"
+        );
+    }
 }

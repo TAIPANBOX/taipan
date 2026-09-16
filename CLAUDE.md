@@ -203,6 +203,46 @@ an absent invariant.
    Container crates are not checked here: invariant 3's gate caps the direct
    set, so one cannot arrive without failing that first.)*
 
+9. **The keyfile is created at mode 0600 over an always-fresh inode, never
+   written loose and chmod'ed afterward and never reusing an existing file
+   or following a symlink at the path, and a failed persist step removes
+   every state file already written, not just the pidfile.** The keyfile
+   carries live Cloud/Wardryx bearer tokens. Writing at the umask default and
+   chmod-ing afterward leaves a window where those tokens sit on disk at
+   whatever the caller's umask allowed, and leaves them there forever if the
+   chmod call itself fails, because `save` returns `Err` with the file
+   already written. That same window was also reachable a second way: opening
+   an EXISTING file at the path with `create(true).truncate(true)` reuses its
+   old inode and ignores the `mode` argument (open(2) only applies it to a
+   newly created inode), so the new tokens were written into the stale file
+   at ITS old mode before the trailing chmod narrowed it (a Fable review
+   caught this after the first pass at this invariant landed). The same open
+   call also followed a symlink at the path rather than refusing it. `save`
+   now removes anything already at the path that is not a symlink before
+   creating, and creates with `create_new` (`O_CREAT | O_EXCL`), which always
+   makes a fresh inode and reports `AlreadyExists` for a symlink without
+   following it. `up`'s keyfile-failure branch used to remove only the
+   pidfile on that error, leaving the keyfile, at whatever permissions it
+   ended up with, behind; the descriptor-failure branch then still left a
+   partial descriptor behind on a failed `descriptor.save` (`std::fs::write`,
+   not atomic), which the shared cleanup helper now also removes, mirroring
+   `down.rs`.
+   *(test: `keys::tests::save_never_lets_a_second_reader_observe_a_looser_mode`,
+   a sweep of 2000 tries racing a second reader's poll against the write,
+   `keys::tests::save_leaves_the_file_at_mode_0600_under_a_permissive_umask`,
+   `keys::tests::save_replaces_an_existing_file_rather_than_reusing_its_inode`
+   (seeds a stale 0644 file, asserts the final mode AND a changed inode under
+   a hostile umask, which also catches a mutant deleting the trailing
+   belt-and-braces chmod), and
+   `keys::tests::save_refuses_a_symlink_at_the_path_rather_than_following_it`,
+   all four in `src/keys.rs`;
+   `commands::up::tests::remove_pidfile_and_keyfile_removes_both_when_present`
+   in `src/commands/up.rs`, the regression test for the keyfile-failure branch
+   having removed only the pidfile, now also asserting the descriptor is
+   removed. `up::run` itself is not unit-testable at this seam, see that test
+   module's doc comment for why. Bound to Gherkin scenarios in
+   `features/the-keyfile-never-sits-loose.feature`.)*
+
 ## Decisions that have no gate yet
 
 This list is debt, and it is here to stay visible rather than to be tidy.
