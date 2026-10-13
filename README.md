@@ -22,10 +22,9 @@ and the split between them is scope, not price.
 Both are Apache-2.0 (see [LICENSE](LICENSE)) and nothing in this estate is sold.
 This paragraph used to call stack-up "the free, minimal launcher" and say this
 repo was "private as part of the Genaryx product boundary", which was true under
-the open-core model and stopped being true when that model was dropped: Genaryx
-itself went public and Apache-2.0 on 2026-07-27, and there is no paid tier left
-for a boundary to protect. The repo is still private, which is now a decision
-nobody has revisited rather than a product line.
+the open-core model. That model has been dropped: Genaryx itself is public and
+Apache-2.0, and there is no paid tier left for a boundary to protect, so this
+repo is public under the same license.
 
 ## What it starts
 
