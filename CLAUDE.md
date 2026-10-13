@@ -16,7 +16,7 @@ Status goes stale, and a stale instruction file is worse than none.
 
 A native, no-Docker, one-command supervisor for the agent-governance stack.
 `taipan up` builds or starts the services and writes a descriptor the Genaryx
-console discovers on its own. This repo is **private**.
+console discovers on its own. This repo is **public** (since 2026-08-28), under Apache-2.0.
 
 ## Blast radius
 
@@ -362,13 +362,14 @@ structurally. Until then it is a document, and documents do not stop code.
 - Any change to the descriptor shape or location, because Genaryx reads it.
 - Anything in the process stop path.
 - Adding a dependency.
-- Cutting a tag or making this repo public.
+- Cutting a tag, or changing this repo's visibility.
 
 ## Conventions
 
 - **No long dashes** anywhere: not in code comments, docs, commit messages, or
   PR bodies. Use a comma, a colon, parentheses, or a short hyphen.
 - Nothing paid or metered gets enabled without telling the user first. This repo
-  is private, so enabling CI here would start metering Actions minutes: ask
-  before adding a workflow.
+  is public, so Actions on standard hosted runners cost nothing; a larger or
+  macOS runner, or turning the repo private again, would start metering: ask
+  before either.
 - Do not delete or revoke keys, tokens, or certificates on your own initiative.
