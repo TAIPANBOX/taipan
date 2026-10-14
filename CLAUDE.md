@@ -36,8 +36,10 @@ different repo that will not fail loudly, it will simply find nothing.
 4. Push the branch, open a PR with `gh`.
 5. **Ask the user before merging.** Do not self-merge.
 
-There is no CI in this repo, so the local gates are the only gates. Treat a
-skipped local run as a skipped review.
+There is no build or test CI in this repo, so the local gates are the only
+gates that build and test the code. The one workflow here runs the estate
+secret scan and nothing else (see Running the gates). Treat a skipped local
+run as a skipped review.
 
 ## Gates
 
@@ -75,10 +77,18 @@ hook ran it, so "run every gate below" was a smaller instruction than the hook's
 git config core.hooksPath .githooks   # once, per clone
 ```
 
-There is no CI in this repository, so `.githooks/pre-push` is the ONLY thing
-that runs the gates above. Without that one line they are scripts nobody calls,
-which is a comment with an exit code. `git push --no-verify` skips them, and
-should be rare enough to be worth explaining.
+There is no build or test CI in this repository, so `.githooks/pre-push` is the
+ONLY thing that runs the gates above. Without that one line they are scripts
+nobody calls, which is a comment with an exit code. `git push --no-verify`
+skips them, and should be rare enough to be worth explaining.
+
+The one workflow, `.github/workflows/secretscan.yml`, runs on every push to
+`main` and on every pull request. It calls the estate's secret scan
+(estate-gates, pinned to one commit), which runs `secretscan tree` over the
+tracked files at the checked-out commit, not the git history. It fails on a
+value that looks like a secret unless `.secretscan-allow` lists its
+fingerprint. It builds nothing, runs no test and none of the gates above.
+Nothing here is tagged or released, so no workflow publishes anything.
 
 ## Hard invariants
 
@@ -157,7 +167,7 @@ an absent invariant.
 7. **Every gate here is proven able to fail, by planting its fault and requiring
    the failure.** A gate that has quietly stopped catching anything looks exactly
    like a gate with nothing to catch, and in this repository nothing else would
-   ever say so: there is no CI, and the hook is the only thing that runs them.
+   ever say so: there is no build or test CI, and the hook is the only thing that runs them.
 
    Both gates were found green over nothing on 2026-08-09. `no-process-scanning.sh`
    greps `src/` twice and `no-panic.sh` walks it with rglob; a grep over a missing
@@ -174,7 +184,7 @@ an absent invariant.
    cases would go with it.)*
 
    In the hook it takes `--skip-if-dirty`, the only exit 0 here that checked
-   nothing. It mutates tracked files, and with no CI the alternative was refusing
+   nothing. It mutates tracked files, and with no build or test CI the alternative was refusing
    every push with uncommitted work in the tree, which is how a hook becomes
    something people disable. The skip prints why.
 
