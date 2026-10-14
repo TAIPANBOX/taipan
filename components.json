@@ -4,10 +4,10 @@
     "believe about it. `checked` is proved against this repository by",
     "tests/manifest.rs. `declared` is a statement",
     "",
-    "AND THIS REPOSITORY HAS NO CI, WHICH IS THE ONE PLACE THIS DESIGN LEANS ON.",
+    "AND THIS REPOSITORY HAS NO BUILD OR TEST CI, WHICH IS THE ONE PLACE THIS DESIGN LEANS ON.",
     "Every sibling manifest says its `checked` bucket is proved in the repository's",
     "own CI, because that is the argument for putting the proof here rather than in",
-    "estate-gates. There are no workflows here at all, so the test above runs when",
+    "estate-gates. The one workflow here runs the secret scan and no test, so the test above runs when",
     "somebody runs `cargo test` and at no other time.",
     "Measured 2026-08-28 across the twelve repositories carrying a manifest: ten",
     "have CI and two do not, this one and costcrew. Both are PUBLIC, where Actions",
@@ -49,7 +49,7 @@
   ],
   "schema": "taipanbox.dev/components/v1",
   "repo": "TAIPANBOX/taipan",
-  "distribution": "not distributed: no CI, no tag, no release; built from source with cargo build on the operator's own machine",
+  "distribution": "not distributed: no build or test CI (its one workflow runs only the secret scan), no tag, no release; built from source with cargo build on the operator's own machine",
   "components": [
     {
       "name": "taipan",

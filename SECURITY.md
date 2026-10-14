@@ -31,5 +31,5 @@ Every change passes the repository's gates before merge:
 `cargo test --all`, `./scripts/no-panic.sh`,
 `./scripts/no-process-scanning.sh`, `./scripts/scenarios-have-tests.sh`,
 `./scripts/declared-deps.sh`, `./scripts/no-docker.sh` and
-`./scripts/gates-have-teeth.sh`. There is no CI in this repository;
+`./scripts/gates-have-teeth.sh`. There is no build or test CI in this repository;
 `.githooks/pre-push` is what runs them.
