@@ -37,6 +37,7 @@ step "no process discovery" "./scripts/no-process-scanning.sh"
 step "every scenario is held by a test" "./scripts/scenarios-have-tests.sh"
 step "dependencies are the declared set" "./scripts/declared-deps.sh"
 step "no container runtime" "./scripts/no-docker.sh"
+step "no pipe ends in a grep that leaves early" "./scripts/no-reader-leaves-a-pipe-early.sh"
 step "the checks above can still fail" "./scripts/gates-have-teeth.sh --skip-if-dirty"
 
 echo
