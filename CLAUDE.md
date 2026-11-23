@@ -34,12 +34,16 @@ different repo that will not fail loudly, it will simply find nothing.
 3. Commit with Conventional Commits. End the message with the standard
    co-author trailer naming the model that actually did the work.
 4. Push the branch, open a PR with `gh`.
-5. **Ask the user before merging.** Do not self-merge.
+5. **Merge it yourself once every check is green on the current head** and the
+   review you ran is resolved: one PR at a time, the fresh base merged in first,
+   never with a red or pending check. `@decided 2026-10-22` (paraphrased): the
+   model that made a change opens its PR, merges it on green and cleans up its
+   branch; tags, releases and anything published still wait for the owner.
 
-There is no build or test CI in this repo, so the local gates are the only
-gates that build and test the code. The one workflow here runs the estate
-secret scan and nothing else (see Running the gates). Treat a skipped local
-run as a skipped review.
+`.github/workflows/ci.yml` builds, tests and runs every gate below on every push
+to `main` and every pull request, in the hook's order and through the same
+scripts. The hook still runs them before a push, so a fault is found before it
+leaves the machine (see Running the gates).
 
 ## Gates
 
@@ -78,12 +82,16 @@ hook ran it, so "run every gate below" was a smaller instruction than the hook's
 git config core.hooksPath .githooks   # once, per clone
 ```
 
-There is no build or test CI in this repository, so `.githooks/pre-push` is the
-ONLY thing that runs the gates above. Without that one line they are scripts
-nobody calls, which is a comment with an exit code. `git push --no-verify`
-skips them, and should be rare enough to be worth explaining.
+`.githooks/pre-push` runs the gates above before a push, and
+`.github/workflows/ci.yml` runs the same steps through the same scripts on every
+push to `main` and every pull request, so `git push --no-verify` or a clone
+without the hook no longer skips them. The only difference is that CI runs
+`gates-have-teeth.sh` without `--skip-if-dirty`, since its checkout is always
+clean. The `security` job in ci.yml runs `cargo audit` against Cargo.lock, and
+`.github/workflows/vulnscan.yml` runs the same audit every Monday, because a new
+advisory arrives without a push.
 
-The one workflow, `.github/workflows/secretscan.yml`, runs on every push to
+The secret scan, `.github/workflows/secretscan.yml`, runs on every push to
 `main` and on every pull request. It calls the estate's secret scan
 (estate-gates, pinned to one commit), which runs `secretscan tree` over the
 tracked files at the checked-out commit, not the git history. It fails on a
@@ -168,7 +176,7 @@ an absent invariant.
 7. **Every gate here is proven able to fail, by planting its fault and requiring
    the failure.** A gate that has quietly stopped catching anything looks exactly
    like a gate with nothing to catch, and in this repository nothing else would
-   ever say so: there is no build or test CI, and the hook is the only thing that runs them.
+   ever say so: the hook and ci.yml are the only things that run them.
 
    Both gates were found green over nothing on 2026-08-09. `no-process-scanning.sh`
    greps `src/` twice and `no-panic.sh` walks it with rglob; a grep over a missing
@@ -185,9 +193,10 @@ an absent invariant.
    cases would go with it.)*
 
    In the hook it takes `--skip-if-dirty`, the only exit 0 here that checked
-   nothing. It mutates tracked files, and with no build or test CI the alternative was refusing
-   every push with uncommitted work in the tree, which is how a hook becomes
-   something people disable. The skip prints why.
+   nothing. It mutates tracked files, and refusing every push with uncommitted work in the
+   tree is how a hook becomes something people disable. The skip prints why. CI
+   runs it without the flag, on a checkout that is always clean, so the skip
+   never leaves the gates unproven.
 
 8. **Every scenario in `features/` is held by a test that exists.** The
    scenarios are there so the promises in README.md can be checked without

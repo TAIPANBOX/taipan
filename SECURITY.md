@@ -31,5 +31,7 @@ Every change passes the repository's gates before merge:
 `cargo test --all`, `./scripts/no-panic.sh`,
 `./scripts/no-process-scanning.sh`, `./scripts/scenarios-have-tests.sh`,
 `./scripts/declared-deps.sh`, `./scripts/no-docker.sh` and
-`./scripts/gates-have-teeth.sh`. There is no build or test CI in this repository;
-`.githooks/pre-push` is what runs them.
+`./scripts/gates-have-teeth.sh`. `.githooks/pre-push` runs them before a push and
+`.github/workflows/ci.yml` runs them on every push to `main` and every pull
+request, with `cargo audit` beside them and once a week in
+`.github/workflows/vulnscan.yml`.

@@ -78,6 +78,14 @@ taipan up --name demo --upstream https://api.anthropic.com/v1/messages
 # skew (see "Keys" below). Not for production.
 taipan up --name demo --devkey
 
+# The gateway's enforcement mode, passed as TOKENFUSE_MODE: shadow, warn or
+# enforce (the default). Anything else is refused before anything starts.
+taipan up --name demo --gateway-mode shadow
+
+# How long to wait for each service's /healthz before giving up, in seconds
+# (default 30, at least 1). A first run that builds the siblings may need more.
+taipan up --name demo --healthz-timeout-secs 120
+
 # Seed a small synthetic event stream (useful before any real traffic flows).
 taipan demo --name demo
 
