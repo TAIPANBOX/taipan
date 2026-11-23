@@ -1,0 +1,78 @@
+# Build, test and every gate the pre-push hook runs, on every push to main and
+# every pull request.
+#
+# Until this file the hook was the only thing that built or tested this
+# repository, and a hook is local configuration: `core.hooksPath` is not
+# committed and does not travel with a clone, and `git push --no-verify` skips
+# it. The steps below are the hook's steps in the hook's order, calling the
+# same scripts, so the two cannot disagree about what a gate is. The one
+# difference: gates-have-teeth.sh runs without --skip-if-dirty, because a CI
+# checkout is always clean and a skip here would be an exit 0 that checked
+# nothing.
+#
+# scripts/e2e.sh is not here, as it is not in the hook: it needs the sibling
+# checkouts built and binds ports 4100 and 8080 (CLAUDE.md invariant 5).
+#
+# Public repository, standard runner: it costs nothing.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rust-toolchain.toml names the channel and the rustfmt and clippy
+      # components; rustup installs them on first use.
+      - name: toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        run: cargo clippy --all-targets --quiet -- -D warnings
+      - name: cargo test
+        run: cargo test --all --quiet
+      - name: no panic in shipping code
+        run: ./scripts/no-panic.sh
+      - name: no process discovery
+        run: ./scripts/no-process-scanning.sh
+      - name: every scenario is held by a test
+        run: ./scripts/scenarios-have-tests.sh
+      - name: dependencies are the declared set
+        run: ./scripts/declared-deps.sh
+      - name: no container runtime
+        run: ./scripts/no-docker.sh
+      - name: no pipe ends in a grep that leaves early
+        run: ./scripts/no-reader-leaves-a-pipe-early.sh
+      - name: the checks above can still fail
+        run: ./scripts/gates-have-teeth.sh
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+      # Reads Cargo.lock against the RustSec advisory database; compiles nothing.
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked --quiet
+          cargo audit
