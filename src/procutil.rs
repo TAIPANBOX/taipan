@@ -334,10 +334,16 @@ mod lifecycle_tests {
         reap(sp.pid);
         assert_eq!(sp.service, "svc");
         assert_eq!(sp.log_path, log);
-        assert!(wait_until_gone(sp.pid, Duration::from_secs(5)), "it ran to completion");
+        assert!(
+            wait_until_gone(sp.pid, Duration::from_secs(5)),
+            "it ran to completion"
+        );
 
         let text = std::fs::read_to_string(&log).expect("read log");
-        assert!(!text.contains("left over"), "the log is truncated per spawn: {text}");
+        assert!(
+            !text.contains("left over"),
+            "the log is truncated per spawn: {text}"
+        );
         assert!(text.contains("out=hello"), "env reached the child: {text}");
         let cwd = std::fs::canonicalize(&dir).expect("canonical dir");
         assert!(
@@ -362,7 +368,10 @@ mod lifecycle_tests {
         )
         .expect("spawn");
         reap(sp.pid);
-        assert!(group_alive(sp.pid), "the group is named by the child's own pid");
+        assert!(
+            group_alive(sp.pid),
+            "the group is named by the child's own pid"
+        );
         assert_eq!(
             stop_group(sp.pid, sp.stop_signal, Duration::from_secs(5)).expect("stop"),
             StopOutcome::Stopped
@@ -402,14 +411,20 @@ mod lifecycle_tests {
             StopSignal::Term,
         )
         .expect_err("log dir blocked");
-        assert!(format!("{err:#}").contains("create log directory"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("create log directory"),
+            "{err:#}"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn stop_signals_round_trip_and_anything_unknown_means_sigterm() {
         assert_eq!(StopSignal::parse(StopSignal::Int.as_str()), StopSignal::Int);
-        assert_eq!(StopSignal::parse(StopSignal::Term.as_str()), StopSignal::Term);
+        assert_eq!(
+            StopSignal::parse(StopSignal::Term.as_str()),
+            StopSignal::Term
+        );
         assert_eq!(StopSignal::parse("sigint"), StopSignal::Int);
         assert_eq!(StopSignal::parse("SIGHUP"), StopSignal::Term);
         assert_eq!(StopSignal::Int.as_libc(), libc::SIGINT);

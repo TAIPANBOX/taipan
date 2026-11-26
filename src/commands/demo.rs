@@ -136,13 +136,23 @@ mod tests {
                 .as_str()
                 .is_some_and(|n| n.contains("synthetic")));
         }
-        assert_eq!(events[10]["source"], events[0]["source"], "the samples cycle");
+        assert_eq!(
+            events[10]["source"], events[0]["source"],
+            "the samples cycle"
+        );
         let first = events[0]["ts"].as_str().expect("ts");
         let last = events[11]["ts"].as_str().expect("ts");
-        assert!(first < last, "timestamps rise within a batch: {first} vs {last}");
+        assert!(
+            first < last,
+            "timestamps rise within a batch: {first} vs {last}"
+        );
 
         run_in(&args, &home).expect("demo again");
-        assert_eq!(lines(&home).len(), 24, "a second batch appends, never truncates");
+        assert_eq!(
+            lines(&home).len(),
+            24,
+            "a second batch appends, never truncates"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

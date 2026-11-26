@@ -123,7 +123,10 @@ mod tests {
         std::fs::write(&corrupt, b"{\"name\": 7}").expect("seed");
         let err = PidFile::load(&corrupt).expect_err("corrupt");
         let text = format!("{err:#}");
-        assert!(text.starts_with("parse") && text.contains("corrupt.pid.json"), "{text}");
+        assert!(
+            text.starts_with("parse") && text.contains("corrupt.pid.json"),
+            "{text}"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

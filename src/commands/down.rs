@@ -204,7 +204,10 @@ mod tests {
 
         run_in(&args("all"), &home, Duration::from_millis(500)).expect("down");
 
-        assert!(!crate::procutil::group_alive(polite), "the polite group survived");
+        assert!(
+            !crate::procutil::group_alive(polite),
+            "the polite group survived"
+        );
         assert!(
             !crate::procutil::group_alive(stubborn),
             "a group ignoring SIGTERM must be force-killed, not left running"
@@ -242,7 +245,10 @@ mod tests {
         let left = PidFile::load(&home.pidfile_path("stuck")).expect("pidfile kept");
         let pids: Vec<i32> = left.processes.iter().map(|e| e.pid).collect();
         assert_eq!(pids, [stuck], "only the stuck group is kept for the retry");
-        assert!(home.keyfile_path("stuck").exists(), "nothing is cleaned up yet");
+        assert!(
+            home.keyfile_path("stuck").exists(),
+            "nothing is cleaned up yet"
+        );
         assert!(home.descriptor_path("stuck").exists());
         assert!(!crate::procutil::group_alive(polite));
 
@@ -258,7 +264,10 @@ mod tests {
         std::fs::write(home.pidfile_path("garbage"), b"not json").expect("seed");
         let err = run_in(&args("garbage"), &home, STOP_GRACE).expect_err("garbage pidfile");
         assert!(format!("{err:#}").contains("parse"), "{err:#}");
-        assert!(home.pidfile_path("garbage").exists(), "the evidence is kept");
+        assert!(
+            home.pidfile_path("garbage").exists(),
+            "the evidence is kept"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

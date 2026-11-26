@@ -60,7 +60,11 @@ fn an_error_is_a_message_and_exit_status_1() {
     ] {
         let out = taipan(Some(&home), &args);
         assert_eq!(out.status.code(), Some(1), "{args:?}: {}", stderr(&out));
-        assert!(stderr(&out).starts_with("taipan: error: "), "{args:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).starts_with("taipan: error: "),
+            "{args:?}: {}",
+            stderr(&out)
+        );
     }
     assert!(
         !home.join(".taipan").exists(),

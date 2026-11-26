@@ -915,8 +915,12 @@ mod stack_tests {
         let p = healthy_ports(&rig);
         let name = "full";
 
-        run_in(rig.args(name, vec![Extra::Wardryx, Extra::Idryx]), &rig.home, p)
-            .expect("up with every service healthy");
+        run_in(
+            rig.args(name, vec![Extra::Wardryx, Extra::Idryx]),
+            &rig.home,
+            p,
+        )
+        .expect("up with every service healthy");
 
         let descriptor = rig.json(&rig.home.descriptor_path(name));
         let services = descriptor["services"].as_object().expect("services map");
@@ -975,27 +979,42 @@ mod stack_tests {
         )));
         assert!(gateway_log.contains(&format!("TOKENFUSE_ADDR=127.0.0.1:{}\n", p.gateway)));
         assert!(gateway_log.contains("TOKENFUSE_ALLOW_STUB=1\n"));
-        assert!(rig.log(name, "cloud").contains(&format!("PORT={}\n", p.cloud)));
+        assert!(rig
+            .log(name, "cloud")
+            .contains(&format!("PORT={}\n", p.cloud)));
         let wardryx_log = rig.log(name, "wardryx");
         assert!(wardryx_log.contains(&format!("args=serve -addr 127.0.0.1:{}", p.wardryx)));
         assert!(wardryx_log.contains(&format!("{admin}:taipan-{name}:admin")));
-        assert!(rig
-            .log(name, "idryx")
-            .contains(&format!("args=serve --addr 127.0.0.1:{} --load tokenfuse:", p.idryx)));
+        assert!(rig.log(name, "idryx").contains(&format!(
+            "args=serve --addr 127.0.0.1:{} --load tokenfuse:",
+            p.idryx
+        )));
 
         // The pidfile names every process, in start order, gateway on SIGINT.
         let pidfile = PidFile::load(&rig.home.pidfile_path(name)).expect("load pidfile");
-        let order: Vec<&str> = pidfile.processes.iter().map(|e| e.service.as_str()).collect();
+        let order: Vec<&str> = pidfile
+            .processes
+            .iter()
+            .map(|e| e.service.as_str())
+            .collect();
         assert_eq!(order, ["gateway", "cloud", "wardryx", "idryx"]);
         assert_eq!(pidfile.processes[0].stop_signal, "SIGINT");
         for entry in &pidfile.processes {
             assert_eq!(entry.pid, entry.pgid);
-            assert!(procutil::group_alive(entry.pid), "{} is not running", entry.service);
+            assert!(
+                procutil::group_alive(entry.pid),
+                "{} is not running",
+                entry.service
+            );
         }
         assert_eq!(rig.alive().len(), 4);
 
         down(&rig, name).expect("down");
-        assert!(rig.alive().is_empty(), "down left {:?} running", rig.alive());
+        assert!(
+            rig.alive().is_empty(),
+            "down left {:?} running",
+            rig.alive()
+        );
         assert!(!rig.home.pidfile_path(name).exists());
         assert!(!rig.home.keyfile_path(name).exists());
         assert!(!rig.home.descriptor_path(name).exists());
@@ -1014,10 +1033,17 @@ mod stack_tests {
         let err = run_in(rig.args("twice", vec![]), &rig.home, p)
             .expect_err("a second up must not start a second copy");
 
-        assert!(format!("{err:#}").contains("already appears to be up"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("already appears to be up"),
+            "{err:#}"
+        );
         let after = std::fs::read(rig.home.pidfile_path("twice")).expect("pidfile");
         assert_eq!(before, after, "the refused up must not touch the pidfile");
-        assert_eq!(rig.alive().len(), 2, "still exactly one gateway and one cloud");
+        assert_eq!(
+            rig.alive().len(),
+            2,
+            "still exactly one gateway and one cloud"
+        );
         down(&rig, "twice").expect("down");
         assert!(rig.alive().is_empty());
     }
@@ -1037,7 +1063,11 @@ mod stack_tests {
                 .unwrap_or_else(|e| panic!("{label}: a dead pidfile must not block up: {e:#}"));
 
             let pidfile = PidFile::load(&rig.home.pidfile_path(label)).expect("load pidfile");
-            assert_eq!(pidfile.processes.len(), 2, "{label}: overwritten with the new run");
+            assert_eq!(
+                pidfile.processes.len(),
+                2,
+                "{label}: overwritten with the new run"
+            );
             down(&rig, label).expect("down");
         }
     }
@@ -1058,7 +1088,10 @@ mod stack_tests {
             text.contains("fake tokenfuse-gateway refusing to start"),
             "the error must carry the service's own log tail: {text}"
         );
-        assert!(rig.pid_of("tokenfuse-cloud").is_none(), "cloud must not have started");
+        assert!(
+            rig.pid_of("tokenfuse-cloud").is_none(),
+            "cloud must not have started"
+        );
         assert!(rig.alive().is_empty());
         assert!(!rig.home.pidfile_path("gwdies").exists());
         assert!(!rig.home.descriptor_path("gwdies").exists());
@@ -1081,7 +1114,10 @@ mod stack_tests {
         let text = format!("{err:#}");
         assert!(text.starts_with("cloud"), "{text}");
         assert!(text.contains("timed out"), "{text}");
-        assert!(rig.pid_of("tokenfuse-gateway").is_some(), "the gateway did start");
+        assert!(
+            rig.pid_of("tokenfuse-gateway").is_some(),
+            "the gateway did start"
+        );
         assert!(
             rig.alive().is_empty(),
             "never a half-up stack: {:?} still running",
@@ -1105,21 +1141,38 @@ mod stack_tests {
         );
         let name = "degraded";
 
-        run_in(rig.args(name, vec![Extra::Wardryx, Extra::Idryx]), &rig.home, p)
-            .expect("a failed --with service must not fail up");
+        run_in(
+            rig.args(name, vec![Extra::Wardryx, Extra::Idryx]),
+            &rig.home,
+            p,
+        )
+        .expect("a failed --with service must not fail up");
 
         let descriptor = rig.json(&rig.home.descriptor_path(name));
         let services = descriptor["services"].as_object().expect("services map");
         assert_eq!(services.len(), 2, "{descriptor}");
         let wardryx = descriptor["unavailable"]["wardryx"].as_str().unwrap_or("");
-        assert!(wardryx.contains("wardryx did not become healthy"), "{descriptor}");
+        assert!(
+            wardryx.contains("wardryx did not become healthy"),
+            "{descriptor}"
+        );
         let idryx = descriptor["unavailable"]["idryx"].as_str().unwrap_or("");
-        assert!(idryx.contains("timed out"), "a 503 is not healthy: {descriptor}");
+        assert!(
+            idryx.contains("timed out"),
+            "a 503 is not healthy: {descriptor}"
+        );
         assert!(descriptor["keys"].get("wardryx_admin_ref").is_none());
         assert!(descriptor["events"]["files"].get("wardryx").is_none());
         let keyfile = rig.json(&rig.home.keyfile_path(name));
-        assert!(keyfile["secrets"].get("wardryx_admin").is_none(), "{keyfile}");
-        assert_eq!(rig.alive().len(), 2, "only gateway and cloud are left running");
+        assert!(
+            keyfile["secrets"].get("wardryx_admin").is_none(),
+            "{keyfile}"
+        );
+        assert_eq!(
+            rig.alive().len(),
+            2,
+            "only gateway and cloud are left running"
+        );
 
         down(&rig, name).expect("down");
         assert!(rig.alive().is_empty());
@@ -1165,7 +1218,10 @@ mod stack_tests {
         assert_eq!(secret(&keyfile, "cloud_admin"), "devkey");
         assert_eq!(secret(&keyfile, "cloud_viewer"), "devkey");
         let cloud_log = rig.log("devkey", "cloud");
-        assert!(cloud_log.contains("TOKENFUSE_CLOUD_ALLOW_DEVKEY=1\n"), "{cloud_log}");
+        assert!(
+            cloud_log.contains("TOKENFUSE_CLOUD_ALLOW_DEVKEY=1\n"),
+            "{cloud_log}"
+        );
         assert!(cloud_log.contains("TOKENFUSE_CLOUD_KEYS=\n"), "{cloud_log}");
         let gateway_log = rig.log("devkey", "gateway");
         assert!(gateway_log.contains("TOKENFUSE_MODE=shadow\n"));
@@ -1193,7 +1249,11 @@ mod stack_tests {
         let (rig, err) = up_with_a_blocked_write("nopid", Path::new("nopid.pid.json"));
         assert!(format!("{err:#}").starts_with("write pidfile"), "{err:#}");
         assert!(rig.pid_of("tokenfuse-cloud").is_some(), "cloud did start");
-        assert!(rig.alive().is_empty(), "unaccounted processes: {:?}", rig.alive());
+        assert!(
+            rig.alive().is_empty(),
+            "unaccounted processes: {:?}",
+            rig.alive()
+        );
         assert!(!rig.home.keyfile_path("nopid").exists());
     }
 
@@ -1201,7 +1261,11 @@ mod stack_tests {
     fn a_keyfile_that_cannot_be_written_rolls_back_and_removes_the_pidfile() {
         let (rig, err) = up_with_a_blocked_write("nokey", Path::new("nokey.keys.json"));
         assert!(format!("{err:#}").starts_with("write keyfile"), "{err:#}");
-        assert!(rig.alive().is_empty(), "unaccounted processes: {:?}", rig.alive());
+        assert!(
+            rig.alive().is_empty(),
+            "unaccounted processes: {:?}",
+            rig.alive()
+        );
         assert!(!rig.home.pidfile_path("nokey").exists());
         assert!(!rig.home.descriptor_path("nokey").exists());
     }
@@ -1209,8 +1273,15 @@ mod stack_tests {
     #[test]
     fn a_descriptor_that_cannot_be_written_rolls_back_and_removes_the_secrets() {
         let (rig, err) = up_with_a_blocked_write("nodesc", Path::new("nodesc.json"));
-        assert!(format!("{err:#}").starts_with("write descriptor"), "{err:#}");
-        assert!(rig.alive().is_empty(), "unaccounted processes: {:?}", rig.alive());
+        assert!(
+            format!("{err:#}").starts_with("write descriptor"),
+            "{err:#}"
+        );
+        assert!(
+            rig.alive().is_empty(),
+            "unaccounted processes: {:?}",
+            rig.alive()
+        );
         assert!(!rig.home.pidfile_path("nodesc").exists());
         assert!(
             !rig.home.keyfile_path("nodesc").exists(),
@@ -1230,7 +1301,10 @@ mod stack_tests {
         let err = validate_args(&rig.args("../escape", vec![])).expect_err("bad name");
         assert!(!format!("{err:#}").is_empty());
         assert!(rig.pid_of("tokenfuse-gateway").is_none());
-        assert!(!rig.home.environments_dir().exists(), "nothing may be created");
+        assert!(
+            !rig.home.environments_dir().exists(),
+            "nothing may be created"
+        );
     }
 
     #[test]
@@ -1241,13 +1315,19 @@ mod stack_tests {
         // directory squatting on its path makes that write fail.
         std::fs::create_dir_all(rig.home.wardryx_policy_path("noprep")).expect("block policy");
 
-        run_in(rig.args("noprep", vec![Extra::Wardryx]), &rig.home, healthy_ports(&rig))
-            .expect("up");
+        run_in(
+            rig.args("noprep", vec![Extra::Wardryx]),
+            &rig.home,
+            healthy_ports(&rig),
+        )
+        .expect("up");
 
         let descriptor = rig.json(&rig.home.descriptor_path("noprep"));
         let reason = descriptor["unavailable"]["wardryx"].as_str().unwrap_or("");
         assert!(reason.contains("demo wardryx policy"), "{descriptor}");
-        assert!(!rig.log("noprep", "gateway").contains("TOKENFUSE_WARDRYX_URL=http"));
+        assert!(!rig
+            .log("noprep", "gateway")
+            .contains("TOKENFUSE_WARDRYX_URL=http"));
         down(&rig, "noprep").expect("down");
     }
 }

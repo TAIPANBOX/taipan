@@ -133,7 +133,11 @@ mod tests {
     #[test]
     fn any_2xx_on_http_1_0_or_1_1_is_healthy() {
         let second = Duration::from_secs(1);
-        assert!(probe_once(answering("HTTP/1.1 204 No Content"), "/healthz", second));
+        assert!(probe_once(
+            answering("HTTP/1.1 204 No Content"),
+            "/healthz",
+            second
+        ));
         assert!(probe_once(answering("HTTP/1.0 200 OK"), "/healthz", second));
     }
 
@@ -142,7 +146,11 @@ mod tests {
         let second = Duration::from_secs(1);
         let unavailable = answering("HTTP/1.1 503 Service Unavailable");
         assert!(!probe_once(unavailable, "/healthz", second));
-        assert!(!probe_once(answering("HTTP/1.1 302 Found"), "/healthz", second));
+        assert!(!probe_once(
+            answering("HTTP/1.1 302 Found"),
+            "/healthz",
+            second
+        ));
         let free = TcpListener::bind("127.0.0.1:0")
             .expect("bind")
             .local_addr()
@@ -191,7 +199,10 @@ mod tests {
         let port = answering("HTTP/1.1 503 Nope");
         let err = wait_healthy(port, "/healthz", pid, Duration::from_secs(30), &log)
             .expect_err("a dead process is never healthy");
-        assert!(start.elapsed() < Duration::from_secs(10), "it waited out the timeout");
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "it waited out the timeout"
+        );
         let text = format!("{err:#}");
         assert!(text.contains("process exited before answering"), "{text}");
         assert!(text.contains("crashed on start"), "{text}");
