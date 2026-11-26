@@ -292,4 +292,127 @@ mod lifecycle_tests {
             "after ForceKilled the group must be gone"
         );
     }
+    fn scratch() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "taipan-procutil-{}-{}",
+            std::process::id(),
+            crate::util::random_hex(4).expect("random suffix")
+        ))
+    }
+
+    /// Reap `pid` on a background thread, so its group really disappears
+    /// once it exits (see `spawn_group_reaped`).
+    fn reap(pid: i32) {
+        std::thread::spawn(move || {
+            let mut status: libc::c_int = 0;
+            // SAFETY: `pid` is a child this test just spawned and nothing
+            // else waits on it; `status` outlives the call.
+            unsafe { libc::waitpid(pid, &mut status, 0) };
+        });
+    }
+
+    #[test]
+    fn a_spawned_process_writes_both_streams_to_a_fresh_log_with_its_env_and_cwd() {
+        let dir = scratch();
+        let log = dir.join("logs").join("svc.log");
+        std::fs::create_dir_all(dir.join("logs")).expect("log dir");
+        std::fs::write(&log, "left over from an earlier run\n").expect("old log");
+
+        let sp = spawn_process(
+            "svc",
+            Path::new("/bin/sh"),
+            &[
+                "-c".to_string(),
+                "echo out=$GREETING; echo err=$(pwd) >&2".to_string(),
+            ],
+            &[("GREETING".to_string(), "hello".to_string())],
+            Some(&dir),
+            &log,
+            StopSignal::Term,
+        )
+        .expect("spawn");
+        reap(sp.pid);
+        assert_eq!(sp.service, "svc");
+        assert_eq!(sp.log_path, log);
+        assert!(wait_until_gone(sp.pid, Duration::from_secs(5)), "it ran to completion");
+
+        let text = std::fs::read_to_string(&log).expect("read log");
+        assert!(!text.contains("left over"), "the log is truncated per spawn: {text}");
+        assert!(text.contains("out=hello"), "env reached the child: {text}");
+        let cwd = std::fs::canonicalize(&dir).expect("canonical dir");
+        assert!(
+            text.contains(&format!("err={}", cwd.display()))
+                || text.contains(&format!("err={}", dir.display())),
+            "stderr and the working directory reached the log: {text}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_spawned_process_leads_its_own_group() {
+        let dir = scratch();
+        let sp = spawn_process(
+            "sleeper",
+            Path::new("sleep"),
+            &["30".to_string()],
+            &[],
+            None,
+            &dir.join("sleeper.log"),
+            StopSignal::Int,
+        )
+        .expect("spawn");
+        reap(sp.pid);
+        assert!(group_alive(sp.pid), "the group is named by the child's own pid");
+        assert_eq!(
+            stop_group(sp.pid, sp.stop_signal, Duration::from_secs(5)).expect("stop"),
+            StopOutcome::Stopped
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_program_that_does_not_exist_is_an_error_naming_the_service() {
+        let dir = scratch();
+        let err = spawn_process(
+            "ghost",
+            &dir.join("no-such-binary"),
+            &[],
+            &[],
+            None,
+            &dir.join("ghost.log"),
+            StopSignal::Term,
+        )
+        .expect_err("nothing to exec");
+        assert!(format!("{err:#}").contains("spawn ghost"), "{err:#}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_log_directory_that_cannot_be_created_is_an_error() {
+        let dir = scratch();
+        std::fs::create_dir_all(&dir).expect("scratch");
+        std::fs::write(dir.join("logs"), b"a file in the way").expect("block");
+        let err = spawn_process(
+            "svc",
+            Path::new("true"),
+            &[],
+            &[],
+            None,
+            &dir.join("logs").join("svc.log"),
+            StopSignal::Term,
+        )
+        .expect_err("log dir blocked");
+        assert!(format!("{err:#}").contains("create log directory"), "{err:#}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stop_signals_round_trip_and_anything_unknown_means_sigterm() {
+        assert_eq!(StopSignal::parse(StopSignal::Int.as_str()), StopSignal::Int);
+        assert_eq!(StopSignal::parse(StopSignal::Term.as_str()), StopSignal::Term);
+        assert_eq!(StopSignal::parse("sigint"), StopSignal::Int);
+        assert_eq!(StopSignal::parse("SIGHUP"), StopSignal::Term);
+        assert_eq!(StopSignal::Int.as_libc(), libc::SIGINT);
+        assert_eq!(StopSignal::Term.as_libc(), libc::SIGTERM);
+    }
 }

@@ -31,14 +31,18 @@ const HEALTH_PATH: &str = "/healthz";
 /// long as it stays true of a parser this crate does not own; setting the
 /// flag here only when the operator asked for it removes the dependency on
 /// another repo's behaviour rather than relying on it.
+///
+/// `port` is [`PORT`] for every real `up`; it is a parameter so a test can
+/// stand the whole start-and-wait path up on a free port.
 pub fn start(
+    port: u16,
     bin: &Path,
     keys_spec: &str,
     devkey: bool,
     log_path: &Path,
     healthz_timeout: Duration,
 ) -> Result<StartedService> {
-    let envs = build_envs(keys_spec, devkey);
+    let envs = build_envs(port, keys_spec, devkey);
 
     let spawned =
         procutil::spawn_process("cloud", bin, &[], &envs, None, log_path, StopSignal::Term)
@@ -46,12 +50,12 @@ pub fn start(
     tracing::info!(
         service = "cloud",
         pid = spawned.pid,
-        port = PORT,
+        port,
         "spawned, waiting for /healthz"
     );
 
     if let Err(e) =
-        crate::health::wait_healthy(PORT, HEALTH_PATH, spawned.pid, healthz_timeout, log_path)
+        crate::health::wait_healthy(port, HEALTH_PATH, spawned.pid, healthz_timeout, log_path)
     {
         let _ = procutil::stop_group(spawned.pid, spawned.stop_signal, Duration::from_secs(10));
         return Err(e.context("cloud did not become healthy"));
@@ -61,7 +65,7 @@ pub fn start(
     Ok(StartedService {
         spawned,
         entry: ServiceEntry {
-            url: format!("http://127.0.0.1:{PORT}"),
+            url: format!("http://127.0.0.1:{port}"),
             mode: None,
         },
     })
@@ -71,9 +75,9 @@ pub fn start(
 /// `start` itself, which is otherwise all I/O (spawn, healthz poll), so the
 /// `ALLOW_DEVKEY` decision has a seam to test without spawning a real
 /// process.
-fn build_envs(keys_spec: &str, devkey: bool) -> Vec<(String, String)> {
+fn build_envs(port: u16, keys_spec: &str, devkey: bool) -> Vec<(String, String)> {
     let mut envs = vec![
-        ("PORT".to_string(), PORT.to_string()),
+        ("PORT".to_string(), port.to_string()),
         // Bind loopback only: this deploy and the on-box web shell reach the
         // money API at 127.0.0.1, and remote access goes through the tunnel,
         // never a raw open port. The binary already defaults to loopback; this
@@ -93,7 +97,7 @@ mod tests {
 
     #[test]
     fn devkey_true_sets_allow_devkey() {
-        let envs = build_envs("", true);
+        let envs = build_envs(PORT, "", true);
         assert!(
             envs.contains(&("TOKENFUSE_CLOUD_ALLOW_DEVKEY".to_string(), "1".to_string())),
             "devkey=true must set TOKENFUSE_CLOUD_ALLOW_DEVKEY=1, got {envs:?}"
@@ -102,7 +106,7 @@ mod tests {
 
     #[test]
     fn devkey_false_does_not_set_allow_devkey() {
-        let envs = build_envs("abc123:default:admin,def456:default:viewer", false);
+        let envs = build_envs(PORT, "abc123:default:admin,def456:default:viewer", false);
         assert!(
             !envs
                 .iter()
@@ -114,7 +118,7 @@ mod tests {
     #[test]
     fn keys_spec_is_passed_through_unchanged_either_way() {
         for devkey in [true, false] {
-            let envs = build_envs("the-spec", devkey);
+            let envs = build_envs(PORT, "the-spec", devkey);
             assert!(
                 envs.contains(&("TOKENFUSE_CLOUD_KEYS".to_string(), "the-spec".to_string())),
                 "TOKENFUSE_CLOUD_KEYS must reach the process unchanged (devkey={devkey}), got {envs:?}"

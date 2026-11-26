@@ -72,3 +72,69 @@ impl PidFile {
         std::fs::write(path, body).with_context(|| format!("write {}", path.display()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn scratch() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "taipan-pidfile-{}-{}",
+            std::process::id(),
+            crate::util::random_hex(4).expect("random suffix")
+        ))
+    }
+
+    #[test]
+    fn a_saved_pidfile_loads_back_entry_for_entry() {
+        let dir = scratch();
+        let path = dir.join("nested").join("env.pid.json");
+        let spawned = Spawned {
+            service: "gateway".to_string(),
+            pid: 4242,
+            stop_signal: StopSignal::Int,
+            log_path: PathBuf::from("/tmp/gateway.log"),
+        };
+        let entry = ProcEntry::from(&spawned);
+        assert_eq!(entry.pgid, entry.pid, "every process leads its own group");
+        assert_eq!(entry.stop_signal, "SIGINT");
+
+        PidFile::new("env", vec![entry]).save(&path).expect("save");
+        let back = PidFile::load(&path).expect("load");
+
+        assert_eq!(back.name, "env");
+        assert_eq!(back.processes.len(), 1);
+        assert_eq!(back.processes[0].service, "gateway");
+        assert_eq!(back.processes[0].pid, 4242);
+        assert_eq!(back.processes[0].parsed_stop_signal(), StopSignal::Int);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_missing_or_corrupt_pidfile_names_the_file_in_its_error() {
+        let dir = scratch();
+        std::fs::create_dir_all(&dir).expect("scratch");
+        let missing = dir.join("missing.pid.json");
+        let err = PidFile::load(&missing).expect_err("missing");
+        assert!(format!("{err:#}").contains("missing.pid.json"), "{err:#}");
+
+        let corrupt = dir.join("corrupt.pid.json");
+        std::fs::write(&corrupt, b"{\"name\": 7}").expect("seed");
+        let err = PidFile::load(&corrupt).expect_err("corrupt");
+        let text = format!("{err:#}");
+        assert!(text.starts_with("parse") && text.contains("corrupt.pid.json"), "{text}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_unwritable_path_is_an_error() {
+        let dir = scratch();
+        std::fs::create_dir_all(dir.join("env.pid.json")).expect("block with a dir");
+        let err = PidFile::new("env", vec![])
+            .save(&dir.join("env.pid.json"))
+            .expect_err("a directory is in the way");
+        assert!(format!("{err:#}").starts_with("write"), "{err:#}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

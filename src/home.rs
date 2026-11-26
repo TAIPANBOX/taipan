@@ -88,3 +88,69 @@ impl TaipanHome {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(root: &str) -> TaipanHome {
+        TaipanHome {
+            root: PathBuf::from(root),
+        }
+    }
+
+    #[test]
+    fn every_path_sits_where_the_layout_says() {
+        // The descriptor path is the one Genaryx watches; the rest are where
+        // `down` looks for what `up` wrote. A moved path is silent on both.
+        let h = at("/h/.taipan");
+        assert_eq!(h.bin_dir(), PathBuf::from("/h/.taipan/bin"));
+        assert_eq!(h.events_dir(), PathBuf::from("/h/.taipan/events"));
+        assert_eq!(h.environments_dir(), PathBuf::from("/h/.taipan/environments"));
+        assert_eq!(
+            h.descriptor_path("dev"),
+            PathBuf::from("/h/.taipan/environments/dev.json")
+        );
+        assert_eq!(
+            h.pidfile_path("dev"),
+            PathBuf::from("/h/.taipan/environments/dev.pid.json")
+        );
+        assert_eq!(
+            h.keyfile_path("dev"),
+            PathBuf::from("/h/.taipan/environments/dev.keys.json")
+        );
+        assert_eq!(
+            h.wardryx_policy_path("dev"),
+            PathBuf::from("/h/.taipan/environments/dev.wardryx-policy.yaml")
+        );
+        assert_eq!(
+            h.logs_dir("dev"),
+            PathBuf::from("/h/.taipan/environments/dev.logs")
+        );
+        assert_eq!(
+            h.traces_dir("dev", "gateway"),
+            PathBuf::from("/h/.taipan/environments/dev.traces/gateway")
+        );
+    }
+
+    #[test]
+    fn base_dirs_are_created_and_a_blocked_one_is_an_error() {
+        let root = std::env::temp_dir().join(format!(
+            "taipan-home-{}-{}",
+            std::process::id(),
+            crate::util::random_hex(4).expect("random suffix")
+        ));
+        let home = TaipanHome { root: root.clone() };
+        home.ensure_base_dirs().expect("create base dirs");
+        for d in [home.bin_dir(), home.events_dir(), home.environments_dir()] {
+            assert!(d.is_dir(), "{} was not created", d.display());
+        }
+        home.ensure_base_dirs().expect("creating them twice is fine");
+
+        std::fs::remove_dir_all(home.events_dir()).expect("remove events dir");
+        std::fs::write(home.events_dir(), b"a file in the way").expect("block events dir");
+        let err = home.ensure_base_dirs().expect_err("a file where a dir goes");
+        assert!(format!("{err:#}").contains("events"), "{err:#}");
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
