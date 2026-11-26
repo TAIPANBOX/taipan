@@ -296,6 +296,15 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
             .expect("chmod seed file to 0644");
         let original_inode = std::fs::metadata(&path).expect("stat seed file").ino();
+        // A second name for the stale inode. It pins that inode for the whole
+        // test: without it, the old code path (remove, then create) frees the
+        // inode and ext4/tmpfs commonly hand the SAME number straight back to
+        // the new file, so a bare inode comparison failed on a correct save
+        // (CI run 45278402547). With the link held, the number cannot be
+        // reused, and the link also shows directly whether save wrote through
+        // the stale inode, which is the leak this test exists to catch.
+        let held = dir.join("held-link-to-stale");
+        std::fs::hard_link(&path, &held).expect("hard-link the stale file");
 
         let old_umask = unsafe { libc::umask(0o777) };
         let kf = KeyFile::new("existing", BTreeMap::new());
@@ -313,6 +322,11 @@ mod tests {
             meta.ino(),
             original_inode,
             "save must not reuse the existing file's inode; it must replace it"
+        );
+        assert_eq!(
+            std::fs::read(&held).expect("read the held link"),
+            b"stale from a previous run",
+            "save wrote the new tokens through the stale inode: another name for it now holds them"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
