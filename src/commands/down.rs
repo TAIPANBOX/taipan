@@ -69,7 +69,6 @@ pub(crate) fn run_in(args: &DownArgs, home: &TaipanHome, grace: Duration) -> Res
                     "  {:<10} pid {:<8} STILL ALIVE after SIGKILL; will retry on next `taipan down`",
                     entry.service, entry.pid
                 );
-                still_alive.push(entry.clone());
             }
             Err(e) => {
                 println!(

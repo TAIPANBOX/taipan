@@ -264,7 +264,6 @@ fn run_in(args: UpArgs, home: &TaipanHome, ports: Ports) -> Result<()> {
             services_section.insert("cloud".to_string(), svc.entry);
         }
         Err(e) => {
-            rollback(&started);
             return Err(e.context("cloud"));
         }
     }
@@ -359,7 +358,6 @@ fn run_in(args: UpArgs, home: &TaipanHome, ports: Ports) -> Result<()> {
     if let Err(e) = descriptor.save(&descriptor_path) {
         tracing::error!(error = %e, "failed to write descriptor; rolling back everything started this run");
         rollback(&started);
-        remove_pidfile_and_keyfile(&pidfile_path, &keyfile_path, &descriptor_path);
         return Err(e.context("write descriptor"));
     }
 

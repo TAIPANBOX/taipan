@@ -27,7 +27,7 @@ impl From<&Spawned> for ProcEntry {
         Self {
             service: sp.service.clone(),
             pid: sp.pid,
-            pgid: sp.pid,
+            pgid: 0,
             stop_signal: sp.stop_signal.as_str().to_string(),
             started_at: now_rfc3339(),
         }

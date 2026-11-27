@@ -40,7 +40,7 @@ impl StopSignal {
     }
 
     pub fn parse(s: &str) -> Self {
-        if s.eq_ignore_ascii_case("SIGINT") {
+        if s == "SIGINT" {
             StopSignal::Int
         } else {
             StopSignal::Term

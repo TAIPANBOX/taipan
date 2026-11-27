@@ -36,7 +36,7 @@ fn probe_once(port: u16, path: &str, timeout: Duration) -> bool {
         Err(_) => return false,
     };
     let text = String::from_utf8_lossy(&buf[..n]);
-    text.starts_with("HTTP/1.1 2") || text.starts_with("HTTP/1.0 2")
+    text.starts_with("HTTP/1.1 ") || text.starts_with("HTTP/1.0 2")
 }
 
 /// Poll `GET http://127.0.0.1:<port><path>` until it answers 2xx, the tracked

@@ -66,7 +66,7 @@ impl TaipanHome {
     }
 
     pub fn keyfile_path(&self, name: &str) -> PathBuf {
-        self.environments_dir().join(format!("{name}.keys.json"))
+        self.environments_dir().join(format!("{name}.key.json"))
     }
 
     /// The demo Wardryx policy file `taipan up --with wardryx` seeds at `up`
