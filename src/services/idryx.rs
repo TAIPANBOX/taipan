@@ -53,13 +53,16 @@ pub fn ensure_binary(workspace: &Workspace, home: &TaipanHome) -> Result<PathBuf
     Ok(bin)
 }
 
+/// `port` is [`PORT`] for every real `up`; it is a parameter so a test can
+/// stand the whole start-and-wait path up on a free port.
 pub fn start(
+    port: u16,
     bin: &Path,
     tokenfuse_events_path: &Path,
     log_path: &Path,
     healthz_timeout: Duration,
 ) -> Result<StartedService> {
-    let addr = format!("127.0.0.1:{PORT}");
+    let addr = format!("127.0.0.1:{port}");
     let load_spec = format!("tokenfuse:{}", tokenfuse_events_path.display());
     let args = vec![
         "serve".to_string(),
@@ -75,7 +78,7 @@ pub fn start(
     tracing::info!(service = "idryx", pid = spawned.pid, addr = %addr, "spawned, waiting for /healthz");
 
     if let Err(e) =
-        crate::health::wait_healthy(PORT, HEALTH_PATH, spawned.pid, healthz_timeout, log_path)
+        crate::health::wait_healthy(port, HEALTH_PATH, spawned.pid, healthz_timeout, log_path)
     {
         let _ = procutil::stop_group(spawned.pid, spawned.stop_signal, Duration::from_secs(10));
         return Err(e.context("idryx did not become healthy"));

@@ -89,8 +89,12 @@ fn build_envs(
     envs
 }
 
+/// `port` is [`PORT`] for every real `up`; it is a parameter so a test can
+/// stand the whole start-and-wait path up on a free port instead of one an
+/// operator may already be using.
 #[allow(clippy::too_many_arguments)]
 pub fn start(
+    port: u16,
     bin: &Path,
     mode: &str,
     events_path: &Path,
@@ -102,14 +106,14 @@ pub fn start(
 ) -> Result<StartedService> {
     std::fs::create_dir_all(data_dir).with_context(|| format!("create {}", data_dir.display()))?;
 
-    let addr = format!("127.0.0.1:{PORT}");
+    let addr = format!("127.0.0.1:{port}");
     let envs = build_envs(&addr, mode, events_path, data_dir, wardryx, upstream);
     let spawned =
         procutil::spawn_process("gateway", bin, &[], &envs, None, log_path, StopSignal::Int)?;
     tracing::info!(service = "gateway", pid = spawned.pid, addr = %addr, mode, "spawned, waiting for /healthz");
 
     if let Err(e) =
-        crate::health::wait_healthy(PORT, HEALTH_PATH, spawned.pid, healthz_timeout, log_path)
+        crate::health::wait_healthy(port, HEALTH_PATH, spawned.pid, healthz_timeout, log_path)
     {
         // Self-cleanup: this process never became healthy, so it must not be
         // left running for the caller to discover as an orphan later.
