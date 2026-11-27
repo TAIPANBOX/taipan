@@ -29,6 +29,6 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("taipan: error: {e:#}");
-        std::process::exit(1);
+        std::process::exit(2);
     }
 }
