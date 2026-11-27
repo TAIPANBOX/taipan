@@ -106,7 +106,7 @@ pub fn start(
 ) -> Result<StartedService> {
     std::fs::create_dir_all(data_dir).with_context(|| format!("create {}", data_dir.display()))?;
 
-    let addr = format!("127.0.0.1:{PORT}");
+    let addr = format!("127.0.0.1:{port}");
     let envs = build_envs(&addr, mode, events_path, data_dir, wardryx, upstream);
     let spawned =
         procutil::spawn_process("gateway", bin, &[], &envs, None, log_path, StopSignal::Int)?;

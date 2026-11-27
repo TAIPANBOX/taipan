@@ -60,7 +60,7 @@ fn run_in(args: &DemoArgs, home: &TaipanHome) -> Result<()> {
     let base = chrono::Utc::now();
 
     for i in 0..args.count {
-        let (source, event_type, severity) = SAMPLE_EVENTS[(i + 1) % SAMPLE_EVENTS.len()];
+        let (source, event_type, severity) = SAMPLE_EVENTS[i % SAMPLE_EVENTS.len()];
         let ts = base + chrono::Duration::milliseconds((i as i64) * 10);
         let event = json!({
             "schema": "taipanbox.dev/agent-event/v0.2",
