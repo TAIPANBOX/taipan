@@ -52,10 +52,9 @@ Feature: Finding the sibling checkouts
     # the loop so it tries one candidate and it still passes. It is a real test
     # of the candidate list on Linux only. Measured 2026-08-20 by asserting the
     # returned path equalled the capitalised name, which failed on this Mac and
-    # would have passed on Linux. There is no CI in this repository, so a
-    # platform-dependent test here is checked by whoever runs the hook, and
-    # that is a Mac. Compare the fifth shape of the verification gap:
-    # the instrument is not the environment.
+    # would have passed on Linux. CI runs on Linux (ubuntu) and the hook on a
+    # Mac, so this scenario goes red where it can, in CI. Compare the fifth
+    # shape of the verification gap: the instrument is not the environment.
 
   @test:a_file_named_like_the_repo_is_not_a_checkout
   Scenario: Something with the right name is not a directory

@@ -4,11 +4,10 @@
     "believe about it. `checked` is proved against this repository by",
     "tests/manifest.rs. `declared` is a statement",
     "",
-    "AND THIS REPOSITORY HAS NO BUILD OR TEST CI, WHICH IS THE ONE PLACE THIS DESIGN LEANS ON.",
+    "Since #22 (2026-11-23) this repository's CI builds it, runs this test and every gate on each push and pull request.",
     "Every sibling manifest says its `checked` bucket is proved in the repository's",
     "own CI, because that is the argument for putting the proof here rather than in",
-    "estate-gates. The one workflow here runs the secret scan and no test, so the test above runs when",
-    "somebody runs `cargo test` and at no other time.",
+    "estate-gates. Here that is `.github/workflows/ci.yml`, beside the local `.githooks/pre-push`.",
     "Measured 2026-08-28 across the twelve repositories carrying a manifest: ten",
     "have CI and two do not, this one and costcrew. Both are PUBLIC, where Actions",
     "cost nothing, so adding CI here is no longer a spending decision.",
@@ -49,7 +48,7 @@
   ],
   "schema": "taipanbox.dev/components/v1",
   "repo": "TAIPANBOX/taipan",
-  "distribution": "not distributed: no build or test CI (its one workflow runs only the secret scan), no tag, no release; built from source with cargo build on the operator's own machine",
+  "distribution": "not distributed: no tag, no release; built from source with cargo build on the operator's own machine. CI (.github/workflows/ci.yml) builds and tests it on every push and pull request",
   "components": [
     {
       "name": "taipan",
