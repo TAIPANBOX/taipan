@@ -16,9 +16,9 @@
 # WHY THE THIRD PROPERTY IS SEPARATE FROM THE FIRST
 #
 # Because here it found both gates green over nothing, and this repository is
-# the worst place in the estate for that: it has no CI, so `.githooks/pre-push`
-# is the only thing that ever runs them. Nothing else would have said they had
-# stopped checking.
+# the worst place in the estate for that: it had no CI then, so `.githooks/pre-push`
+# was the only thing that ran them. Nothing else would have said they had
+# stopped checking. CI runs them too since #22.
 #
 # `no-process-scanning.sh` greps `src/` twice and `no-panic.sh` walks it with
 # rglob. A grep over a directory that is not there prints nothing; an rglob over
@@ -59,8 +59,7 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
 # `--skip-if-dirty` is for `.githooks/pre-push`, and here it is load-bearing
-# rather than a convenience: this repository has NO CI, so the hook is the only
-# thing that ever runs any of this. Without the flag the choice would be
+# rather than a convenience: the hook runs all of this before a push, beside CI. Without the flag the choice would be
 # between refusing every push that has uncommitted work in the tree, which is
 # how a hook becomes something people disable, and not running this at all.
 #

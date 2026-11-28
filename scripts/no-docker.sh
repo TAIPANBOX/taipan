@@ -20,8 +20,8 @@
 # without that gate failing first, and duplicating the check would leave two
 # copies to drift.
 #
-# This file is the ONE copy of this check. There is no CI in this repository,
-# so `.githooks/pre-push` is the only thing that runs it.
+# This file is the ONE copy of this check. `.githooks/pre-push` runs it before a
+# push and CI (.github/workflows/ci.yml) runs it on every push and pull request.
 
 set -euo pipefail
 

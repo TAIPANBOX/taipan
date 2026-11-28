@@ -13,8 +13,7 @@
 # The reverse of 2 is deliberately NOT checked. A unit test without a scenario is
 # fine and common: not every assertion is a promise to an operator.
 #
-# There is no CI in this repository, so the local hook is the only thing that
-# runs this.
+# The local hook and CI (.github/workflows/ci.yml) both run this.
 
 set -euo pipefail
 

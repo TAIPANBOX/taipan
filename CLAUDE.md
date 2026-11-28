@@ -352,10 +352,10 @@ coordinated change with that repo rather than a local one.
   first version of that assertion asked whether the scoped target appeared in
   the file at all, and a mutation widening one rule of two left it green.
 
-  Still not covered: `commands/down.rs` at 45%, whose remainder is the
-  partial-stop path where a process survives SIGKILL, and `health.rs` at 69%,
-  whose remainder is the timeout that waits out the full budget by definition.
-  Neither is something a test can arrange on this platform.
+  #24 drives `up` and `down` end to end against fake services on free ports:
+  rollback of a half-started stack, the persist-failure branches, and down's
+  stop, force-kill and keep-for-retry paths, with nine hand mutants each caught.
+  Line coverage is 95.3% in CI and the floor is 94.3 (`.coverage-floor`).
 
   **Before mutation-testing any of this, know that it can orphan a stack.**
   @measured 2026-08-20: planting faults in `refuse_if_already_up`, in `down`'s
